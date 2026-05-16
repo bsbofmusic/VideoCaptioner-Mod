@@ -1,0 +1,13 @@
+﻿# Changelog
+
+## 0.0.1
+
+- Added Codex provider based on OpenAI Responses API `/responses`.
+- Added Anthropic provider based on Anthropic Messages API `/messages`.
+- Preserved original OpenAI-compatible Chat Completions behavior for non-Codex/non-Anthropic providers.
+- Added local ASR rate-limit refresh for public ASR services.
+- Changed subtitle correction batch size default to 30 lines.
+- Added watchdogs/timeouts for LLM calls, subtitle optimization, and batch processing.
+- Added non-LLM automatic retry for batch tasks, up to 5 attempts.
+- Improved user-facing failure messages for known ASR and processing failures.
+- Improved LLM log compatibility with Responses API records.
