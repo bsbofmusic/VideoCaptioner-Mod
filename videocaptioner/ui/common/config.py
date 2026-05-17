@@ -149,7 +149,7 @@ class Config(QConfig):
         "Translate", "NeedReflectTranslate", False, BoolValidator()
     )
     deeplx_endpoint = ConfigItem("Translate", "DeeplxEndpoint", "")
-    batch_size = RangeConfigItem("Translate", "BatchSize", 30, RangeValidator(5, 50))
+    batch_size = RangeConfigItem("Translate", "BatchSize", 50, RangeValidator(5, 50))
     thread_num = RangeConfigItem("Translate", "ThreadNum", 10, RangeValidator(1, 50))
 
     # ------------------- 转录配置 -------------------
@@ -339,8 +339,27 @@ class Config(QConfig):
     # ------------------- 缓存配置 -------------------
     cache_enabled = ConfigItem("Cache", "CacheEnabled", True, BoolValidator())
 
+    # ------------------- 配置迁移标记 -------------------
+    batch_size_default_50_migrated = ConfigItem(
+        "Migrations", "BatchSizeDefault50", False, BoolValidator()
+    )
+
 
 cfg = Config()
 cfg.themeMode.value = Theme.DARK
 cfg.themeColor.value = QColor("#ff28f08b")
 qconfig.load(SETTINGS_PATH, cfg)
+
+
+def _migrate_batch_size_default_to_50():
+    """Apply one-time migration for existing settings that kept old default 30."""
+    if cfg.batch_size_default_50_migrated.value:
+        return
+
+    if cfg.batch_size.value == 30:
+        cfg.set(cfg.batch_size, 50)
+
+    cfg.set(cfg.batch_size_default_50_migrated, True)
+
+
+_migrate_batch_size_default_to_50()

@@ -15,6 +15,7 @@ from videocaptioner.core.entities import (
     TranscribeTask,
     TranscriptAndSubtitleTask,
 )
+from videocaptioner.core.utils.path_utils import safe_stem, sanitize_path_component
 from videocaptioner.ui.common.config import cfg
 
 
@@ -53,7 +54,7 @@ class TaskFactory:
     ) -> TranscribeTask:
         """创建转录任务"""
         # 获取文件名
-        file_name = Path(file_path).stem
+        file_name = safe_stem(file_path)
 
         # 构建输出路径
         if need_next_task:
@@ -112,7 +113,7 @@ class TaskFactory:
         task_id: Optional[str] = None,
     ) -> SubtitleTask:
         """创建字幕任务"""
-        output_name = (
+        output_name = sanitize_path_component(
             Path(file_path).stem.replace("【原始字幕】", "").replace("【下载字幕】", "")
         )
         # 只在需要翻译时添加翻译服务后缀
@@ -221,7 +222,7 @@ class TaskFactory:
     ) -> SynthesisTask:
         """创建视频合成任务"""
         output_path = str(
-            Path(video_path).parent / f"【卡卡】{Path(video_path).stem}.mp4"
+            Path(video_path).parent / f"【卡卡】{safe_stem(video_path)}.mp4"
         )
 
         # 只有启用样式时才传入样式配置
@@ -258,7 +259,7 @@ class TaskFactory:
         """创建转录和字幕任务"""
         if output_path is None:
             output_path = str(
-                Path(file_path).parent / f"{Path(file_path).stem}_processed.srt"
+                Path(file_path).parent / f"{safe_stem(file_path)}_processed.srt"
             )
 
         return TranscriptAndSubtitleTask(
@@ -279,7 +280,7 @@ class TaskFactory:
         if output_path is None:
             output_path = str(
                 Path(file_path).parent
-                / f"{Path(file_path).stem}_final{Path(file_path).suffix}"
+                / f"{safe_stem(file_path)}_final{Path(file_path).suffix}"
             )
 
         return FullProcessTask(

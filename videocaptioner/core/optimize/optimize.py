@@ -196,22 +196,31 @@ class SubtitleOptimizer:
         try:
             result = self.agent_loop(subtitle_chunk)
 
-            if self.is_running and self.update_callback:
-                callback_data = [
-                    SubtitleProcessData(
-                        index=int(idx),
-                        original_text=subtitle_chunk[idx],
-                        optimized_text=result[idx],
-                    )
-                    for idx in sorted(result.keys(), key=int)
-                ]
-                self.update_callback(callback_data)
+            self._notify_chunk_completed(subtitle_chunk, result)
 
             return result
 
         except Exception as e:
             logger.error(f"优化失败：{str(e)}")
+            self._notify_chunk_completed(subtitle_chunk, subtitle_chunk)
             return subtitle_chunk
+
+    def _notify_chunk_completed(
+        self, subtitle_chunk: Dict[str, str], result: Dict[str, str]
+    ) -> None:
+        """Notify UI that a chunk is finished, even when it falls back to original text."""
+        if not (self.is_running and self.update_callback):
+            return
+
+        callback_data = [
+            SubtitleProcessData(
+                index=int(idx),
+                original_text=subtitle_chunk[idx],
+                optimized_text=result.get(idx, subtitle_chunk[idx]),
+            )
+            for idx in sorted(subtitle_chunk.keys(), key=int)
+        ]
+        self.update_callback(callback_data)
 
     def agent_loop(self, subtitle_chunk: Dict[str, str]) -> Dict[str, str]:
         """使用agent loop优化字幕

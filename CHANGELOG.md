@@ -1,4 +1,11 @@
-﻿# Changelog
+# Changelog
+
+## 0.0.2
+
+- Added batch preflight checks before starting queued jobs.
+- Auto-sanitized derived output paths and created writable parent directories.
+- Prevented deterministic path errors like trailing-space stems from entering retry loops.
+- Migrated existing subtitle correction batch size defaults from 30 to 50.
 
 ## 0.0.1
 

@@ -2,7 +2,7 @@
 
 import atexit
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Callable, List, Optional
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
@@ -12,6 +12,7 @@ from videocaptioner.core.utils.cache import generate_cache_key, get_translate_ca
 from videocaptioner.core.utils.logger import setup_logger
 
 logger = setup_logger("subtitle_translator")
+TRANSLATE_NO_PROGRESS_TIMEOUT_SECONDS = 90
 
 
 class BaseTranslator(ABC):
@@ -86,17 +87,51 @@ class BaseTranslator(ABC):
             future = self.executor.submit(self._safe_translate_chunk, chunk)
             future_to_chunk[future] = chunk
 
-        for future in as_completed(future_to_chunk):
-            if not self.is_running:
-                break
-            try:
-                result = future.result()
-                translated_list.extend(result)
-            except Exception as e:
-                logger.error(f"翻译块失败：{str(e)}")
-                translated_list.extend(future_to_chunk[future])
+        pending = set(future_to_chunk.keys())
+        while pending and self.is_running:
+            done, pending = wait(
+                pending,
+                timeout=TRANSLATE_NO_PROGRESS_TIMEOUT_SECONDS,
+                return_when=FIRST_COMPLETED,
+            )
+            if not done:
+                pending_ranges = [self._chunk_range(future_to_chunk[future]) for future in pending]
+                error_msg = (
+                    f"字幕翻译超时：超过 {TRANSLATE_NO_PROGRESS_TIMEOUT_SECONDS} 秒"
+                    f"没有任何批次完成。未完成批次：{', '.join(pending_ranges[:10])}"
+                )
+                if len(pending_ranges) > 10:
+                    error_msg += f" 等 {len(pending_ranges)} 批"
+                logger.error(error_msg)
+                for future in pending:
+                    future.cancel()
+                self.stop()
+                raise RuntimeError(error_msg)
+
+            for future in done:
+                chunk = future_to_chunk[future]
+                try:
+                    result = future.result()
+                    translated_list.extend(result)
+                except Exception as e:
+                    logger.error(f"翻译块失败：{str(e)}")
+                    self._notify_chunk_completed(chunk)
+                    translated_list.extend(chunk)
 
         return translated_list
+
+    @staticmethod
+    def _chunk_range(chunk: List[SubtitleProcessData]) -> str:
+        if not chunk:
+            return "空批次"
+        return f"{chunk[0].index}-{chunk[-1].index}"
+
+    def _notify_chunk_completed(self, chunk: List[SubtitleProcessData]) -> None:
+        if self.is_running and self.update_callback:
+            try:
+                self.update_callback(chunk)
+            except Exception as e:
+                logger.error(f"翻译进度回调失败：{str(e)}")
 
     def _get_cache_key(self, chunk: List[SubtitleProcessData]) -> str:
         """生成缓存键"""
@@ -118,6 +153,7 @@ class BaseTranslator(ABC):
                 cached_result = None
                 self._cache.delete(cache_key)
             if cached_result is not None:
+                self._notify_chunk_completed(cached_result)
                 return cached_result
 
             result = self._translate_chunk(chunk)

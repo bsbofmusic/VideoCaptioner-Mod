@@ -1,6 +1,6 @@
 import atexit
 import difflib
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import List, Union
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
@@ -52,6 +52,7 @@ MATCH_SIMILARITY_THRESHOLD = 0.5  # 文本匹配相似度阈值
 MATCH_MAX_SHIFT = 30  # 匹配滑动窗口最大偏移
 MATCH_MAX_UNMATCHED = 5  # 允许的最大未匹配句子数
 MATCH_LARGE_SHIFT = 100  # 未匹配时的大偏移量
+SPLIT_NO_PROGRESS_TIMEOUT_SECONDS = 90
 
 
 def preprocess_segments(
@@ -254,15 +255,33 @@ class SubtitleSplitter:
             future = self.executor.submit(self._process_single_segment, asr_data)
             futures.append(future)
 
+        future_to_data = {future: asr_data for future, asr_data in zip(futures, asr_data_list)}
+        pending = set(futures)
         processed_segments = []
-        for future in as_completed(futures):
-            if not self.is_running:
-                break
-            try:
-                result = future.result()
-                processed_segments.append(result)
-            except Exception as e:
-                logger.error(f"处理分段失败:{str(e)}")
+        while pending and self.is_running:
+            done, pending = wait(
+                pending,
+                timeout=SPLIT_NO_PROGRESS_TIMEOUT_SECONDS,
+                return_when=FIRST_COMPLETED,
+            )
+            if not done:
+                error_msg = (
+                    f"字幕断句超时：超过 {SPLIT_NO_PROGRESS_TIMEOUT_SECONDS} 秒"
+                    f"没有任何分段完成。未完成分段：{len(pending)}"
+                )
+                logger.error(error_msg)
+                for future in pending:
+                    future.cancel()
+                self.stop()
+                raise RuntimeError(error_msg)
+
+            for future in done:
+                try:
+                    result = future.result()
+                    processed_segments.append(result)
+                except Exception as e:
+                    logger.error(f"处理分段失败:{str(e)}")
+                    processed_segments.append(future_to_data[future].segments)
 
         return processed_segments
 
