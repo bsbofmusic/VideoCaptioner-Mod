@@ -6,6 +6,7 @@
 - Auto-sanitized derived output paths and created writable parent directories.
 - Prevented deterministic path errors like trailing-space stems from entering retry loops.
 - Migrated existing subtitle correction batch size defaults from 30 to 50.
+- Added a process-isolated subtitle optimizer watchdog so stuck batches can be killed and safely fall back to original text.
 
 ## 0.0.1
 

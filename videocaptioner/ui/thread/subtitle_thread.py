@@ -36,7 +36,7 @@ SERVICE_TO_TYPE = {
 }
 
 logger = setup_logger("subtitle_optimization_thread")
-SUBTITLE_STALL_TIMEOUT_SECONDS = 2 * 60
+SUBTITLE_STALL_TIMEOUT_SECONDS = 150
 
 
 def create_translator_from_config(
@@ -178,6 +178,7 @@ class SubtitleThread(QThread):
                     update_callback=self.callback,
                 )
                 asr_data = self.optimizer.optimize_subtitle(asr_data)
+                self.optimizer.stop()
                 self.optimizer = None
                 asr_data.remove_punctuation()
                 self.update_all.emit(asr_data.to_json())
@@ -290,12 +291,11 @@ class SubtitleThread(QThread):
     def stop(self):
         """停止所有处理"""
         try:
+            self.requestInterruption()
             self._stop_workers()
 
-            # 终止线程
-            self.terminate()
-            # 等待最多3秒
-            if not self.wait(3000):
+            # 等待最多3秒，避免使用 QThread.terminate() 造成 Python/Qt 锁死
+            if self.isRunning() and not self.wait(3000):
                 logger.warning("线程未能在3秒内正常停止")
 
             # 发送进度信号
@@ -329,10 +329,10 @@ class SubtitleThread(QThread):
             f"最后状态：{self._last_progress_message or '未知'}"
         )
         logger.error(message)
+        self.requestInterruption()
         self._stop_workers()
         self.error.emit(message)
         self.progress.emit(100, self.tr("字幕处理卡死"))
-        self.terminate()
 
     def _stop_workers(self):
         for attr_name, label in (

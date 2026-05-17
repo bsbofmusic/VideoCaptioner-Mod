@@ -5,9 +5,12 @@
 
 import atexit
 import difflib
+import multiprocessing as mp
 import re
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from typing import Callable, Dict, List, Optional, Tuple, Union
+import time
+from dataclasses import dataclass
+from multiprocessing.connection import Connection
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import json_repair
 
@@ -15,14 +18,57 @@ from ..asr.asr_data import ASRData, ASRDataSeg
 from ..entities import SubtitleProcessData
 from ..llm import call_llm
 from ..prompts import get_prompt
-from ..split.alignment import SubtitleAligner
 from ..utils.logger import setup_logger
 from ..utils.text_utils import count_words
 
 logger = setup_logger("subtitle_optimizer")
 
-MAX_STEPS = 3
-OPTIMIZE_NO_PROGRESS_TIMEOUT_SECONDS = 90
+MAX_STEPS = 2
+MAX_VALIDATION_FEEDBACK_ITEMS = 5
+OPTIMIZE_LLM_CALL_TIMEOUT_SECONDS = 45
+OPTIMIZE_BATCH_TIMEOUT_SECONDS = 90
+OPTIMIZE_POLL_INTERVAL_SECONDS = 0.5
+OPTIMIZE_MAX_IN_FLIGHT_CAP = 4
+# Backward-compatible name for old tests/log messages. The optimizer now uses a
+# hard per-batch process timeout instead of a ThreadPoolExecutor no-progress wait.
+OPTIMIZE_NO_PROGRESS_TIMEOUT_SECONDS = OPTIMIZE_BATCH_TIMEOUT_SECONDS
+
+
+@dataclass
+class _ProcessJob:
+    chunk: Dict[str, str]
+    process: mp.Process
+    conn: Connection
+    started_at: float
+
+
+def _optimize_chunk_process(
+    conn: Connection,
+    subtitle_chunk: Dict[str, str],
+    model: str,
+    custom_prompt: str,
+) -> None:
+    """Optimize one batch in a child process so the parent can kill hard hangs."""
+    try:
+        optimizer = SubtitleOptimizer(
+            thread_num=1,
+            batch_num=max(len(subtitle_chunk), 1),
+            model=model,
+            custom_prompt=custom_prompt,
+            update_callback=None,
+        )
+        result = optimizer.agent_loop(subtitle_chunk)
+        conn.send(("ok", result, ""))
+    except BaseException as e:  # child must never hang the parent by crashing silently
+        try:
+            conn.send(("error", subtitle_chunk, f"{type(e).__name__}: {e}"))
+        except Exception:
+            pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 class SubtitleOptimizer:
@@ -59,12 +105,7 @@ class SubtitleOptimizer:
         self.update_callback = update_callback
 
         self.is_running = True
-        self.executor: Optional[ThreadPoolExecutor] = None
-        self._init_thread_pool()
-
-    def _init_thread_pool(self) -> None:
-        """初始化线程池并注册清理函数"""
-        self.executor = ThreadPoolExecutor(max_workers=self.thread_num)
+        self._active_jobs: List[_ProcessJob] = []
         atexit.register(self.stop)
 
     def optimize_subtitle(self, subtitle_data: Union[str, ASRData]) -> ASRData:
@@ -127,54 +168,160 @@ class SubtitleOptimizer:
         Returns:
             优化后的字幕字典
         """
-        if not self.executor:
-            raise ValueError("线程池未初始化")
-
-        future_to_chunk = {}
         optimized_dict: Dict[str, str] = {}
 
-        # 提交所有任务
-        for chunk in chunks:
-            future = self.executor.submit(self._optimize_chunk, chunk)
-            future_to_chunk[future] = chunk
+        if not chunks:
+            return optimized_dict
 
-        pending = set(future_to_chunk.keys())
+        mp.freeze_support()
+        ctx = mp.get_context("spawn")
+        max_in_flight = min(
+            max(1, self.thread_num),
+            OPTIMIZE_MAX_IN_FLIGHT_CAP,
+            len(chunks),
+        )
+        next_index = 0
+        consecutive_hard_failures = 0
 
-        # 收集结果：避免按提交顺序 future.result() 无限等待导致整体卡死
-        while pending and self.is_running:
-            done, pending = wait(
-                pending,
-                timeout=OPTIMIZE_NO_PROGRESS_TIMEOUT_SECONDS,
-                return_when=FIRST_COMPLETED,
-            )
+        try:
+            while self.is_running and (
+                next_index < len(chunks) or self._active_jobs
+            ):
+                while (
+                    self.is_running
+                    and next_index < len(chunks)
+                    and len(self._active_jobs) < max_in_flight
+                ):
+                    chunk = chunks[next_index]
+                    self._active_jobs.append(self._start_process_job(ctx, chunk))
+                    next_index += 1
 
-            if not done:
-                pending_ranges = [
-                    self._chunk_range(future_to_chunk[future]) for future in pending
-                ]
-                error_msg = (
-                    f"字幕优化超时：超过 {OPTIMIZE_NO_PROGRESS_TIMEOUT_SECONDS} 秒"
-                    f"没有任何批次完成。未完成批次：{', '.join(pending_ranges[:10])}"
-                )
-                if len(pending_ranges) > 10:
-                    error_msg += f" 等 {len(pending_ranges)} 批"
+                made_progress = False
+                now = time.time()
+                for job in list(self._active_jobs):
+                    status, result, error_message = self._poll_process_job(job, now)
+                    if status == "pending":
+                        continue
 
-                logger.error(error_msg)
-                for future in pending:
-                    future.cancel()
-                self.stop()
-                raise RuntimeError(error_msg)
+                    made_progress = True
+                    self._active_jobs.remove(job)
+                    if status == "ok":
+                        consecutive_hard_failures = 0
+                    else:
+                        consecutive_hard_failures += 1
+                        logger.error(
+                            "字幕优化批次 %s 失败，保留原文：%s",
+                            self._chunk_range(job.chunk),
+                            error_message,
+                        )
 
-            for future in done:
-                chunk = future_to_chunk[future]
-                try:
-                    result = future.result()
                     optimized_dict.update(result)
-                except Exception as e:
-                    logger.error(f"优化批次失败：{str(e)}")
-                    optimized_dict.update(chunk)  # 失败时保留原文
+                    self._notify_chunk_completed(job.chunk, result)
+
+                    if consecutive_hard_failures >= max_in_flight:
+                        raise RuntimeError(
+                            f"字幕优化连续 {consecutive_hard_failures} 个批次超时或崩溃，"
+                            f"已停止以避免卡死。最后错误：{error_message}"
+                        )
+
+                if not made_progress:
+                    time.sleep(OPTIMIZE_POLL_INTERVAL_SECONDS)
+
+            if not self.is_running:
+                raise RuntimeError("字幕优化已取消")
+
+        finally:
+            self._terminate_active_jobs()
 
         return optimized_dict
+
+    def _start_process_job(self, ctx: Any, chunk: Dict[str, str]) -> _ProcessJob:
+        start_idx = next(iter(chunk))
+        end_idx = next(reversed(chunk))
+        logger.info(f"[+]正在优化字幕：{start_idx} - {end_idx}")
+
+        parent_conn, child_conn = ctx.Pipe(duplex=False)
+        process = ctx.Process(
+            target=_optimize_chunk_process,
+            args=(child_conn, chunk, self.model, self.custom_prompt),
+        )
+        process.daemon = True
+        process.start()
+        child_conn.close()
+        return _ProcessJob(
+            chunk=chunk,
+            process=process,
+            conn=parent_conn,
+            started_at=time.time(),
+        )
+
+    def _poll_process_job(
+        self, job: _ProcessJob, now: float
+    ) -> Tuple[str, Dict[str, str], str]:
+        try:
+            has_data = job.conn.poll()
+        except OSError as e:
+            self._kill_job(job)
+            return "error", job.chunk, f"子进程通信失败：{e}"
+
+        if has_data:
+            try:
+                status, result, error_message = job.conn.recv()
+            except EOFError:
+                status, result, error_message = (
+                    "error",
+                    job.chunk,
+                    "子进程未返回结果",
+                )
+            self._cleanup_job(job)
+            if status == "ok" and isinstance(result, dict):
+                return "ok", result, ""
+            return "error", job.chunk, error_message or "子进程优化失败"
+
+        if not job.process.is_alive():
+            exit_code = job.process.exitcode
+            self._cleanup_job(job)
+            return "error", job.chunk, f"子进程异常退出，exit_code={exit_code}"
+
+        elapsed = now - job.started_at
+        if elapsed > OPTIMIZE_BATCH_TIMEOUT_SECONDS:
+            error_message = (
+                f"批次 {self._chunk_range(job.chunk)} 超过 "
+                f"{OPTIMIZE_BATCH_TIMEOUT_SECONDS} 秒未完成，已强制终止"
+            )
+            self._kill_job(job)
+            return "timeout", job.chunk, error_message
+
+        return "pending", job.chunk, ""
+
+    @staticmethod
+    def _cleanup_job(job: _ProcessJob) -> None:
+        try:
+            job.conn.close()
+        except Exception:
+            pass
+        try:
+            job.process.join(timeout=1)
+        except Exception:
+            pass
+
+    def _kill_job(self, job: _ProcessJob) -> None:
+        try:
+            if job.process.is_alive():
+                job.process.terminate()
+                job.process.join(timeout=2)
+            if job.process.is_alive():
+                job.process.kill()
+                job.process.join(timeout=2)
+        except Exception as e:
+            logger.error("终止优化子进程失败：%s", str(e))
+        finally:
+            self._cleanup_job(job)
+
+    def _terminate_active_jobs(self) -> None:
+        for job in list(self._active_jobs):
+            self._kill_job(job)
+        self._active_jobs.clear()
 
     @staticmethod
     def _chunk_range(chunk: Dict[str, str]) -> str:
@@ -194,15 +341,10 @@ class SubtitleOptimizer:
         logger.info(f"[+]正在优化字幕：{start_idx} - {end_idx}")
 
         try:
-            result = self.agent_loop(subtitle_chunk)
-
-            self._notify_chunk_completed(subtitle_chunk, result)
-
-            return result
+            return self.agent_loop(subtitle_chunk)
 
         except Exception as e:
             logger.error(f"优化失败：{str(e)}")
-            self._notify_chunk_completed(subtitle_chunk, subtitle_chunk)
             return subtitle_chunk
 
     def _notify_chunk_completed(
@@ -252,7 +394,7 @@ class SubtitleOptimizer:
             {"role": "user", "content": user_prompt},
         ]
 
-        last_result = None
+        last_result: Optional[Dict[str, str]] = None
 
         # Agent loop
         for step in range(MAX_STEPS):
@@ -261,34 +403,62 @@ class SubtitleOptimizer:
                 messages=messages,
                 model=self.model,
                 temperature=0.2,
+                timeout=OPTIMIZE_LLM_CALL_TIMEOUT_SECONDS,
             )
 
             result_text = response.choices[0].message.content
             if not result_text:
-                raise ValueError("LLM返回空结果")
+                if step == 0:
+                    messages.append(
+                        {"role": "user", "content": "Output cannot be empty. Return JSON only."}
+                    )
+                    continue
+                return subtitle_chunk
 
             # 解析结果
-            parsed_result = json_repair.loads(result_text)
+            try:
+                parsed_result = json_repair.loads(result_text)
+            except Exception as e:
+                logger.warning("优化结果 JSON 解析失败：%s", str(e))
+                if step == 0:
+                    messages.append({"role": "assistant", "content": result_text[:1000]})
+                    messages.append(
+                        {"role": "user", "content": "Return ONLY a valid JSON dictionary."}
+                    )
+                    continue
+                return subtitle_chunk
+
             if not isinstance(parsed_result, dict):
-                raise ValueError(
-                    f"LLM返回结果类型错误，期望dict，实际{type(parsed_result)}"
+                logger.warning(
+                    "LLM返回结果类型错误，期望dict，实际%s", type(parsed_result)
                 )
+                if step == 0:
+                    messages.append(
+                        {"role": "user", "content": "Output must be a JSON dictionary."}
+                    )
+                    continue
+                return subtitle_chunk
 
             result_dict: Dict[str, str] = parsed_result
             last_result = result_dict
 
-            # 验证结果
-            is_valid, error_message = self._validate_optimization_result(
-                original_chunk=subtitle_chunk, optimized_chunk=result_dict
+            normalized_result, issues, missing_or_extra = self._normalize_result(
+                subtitle_chunk, result_dict
             )
 
-            if is_valid:
-                return self._repair_subtitle(subtitle_chunk, result_dict)
+            if not issues:
+                return normalized_result
 
-            # 验证失败，添加反馈
-            logger.warning(
-                f"优化验证失败，开始反馈循环 (第{step + 1}次尝试): {error_message}"
-            )
+            error_message = self._format_issues(issues)
+            logger.warning("优化结果需要修正：%s", error_message)
+
+            # Missing/extra keys can be fixed by one compact feedback loop. Similarity
+            # failures are deterministic safety checks: keep original text instead of
+            # spending extra LLM calls and risking long stalls.
+            if not missing_or_extra or step >= MAX_STEPS - 1:
+                return normalized_result
+
+            logger.warning("优化键不完整，开始一次反馈修正 (第%s次尝试)", step + 1)
             messages.append({"role": "assistant", "content": result_text})
             messages.append(
                 {
@@ -302,11 +472,64 @@ class SubtitleOptimizer:
 
         # 达到最大步数
         logger.warning(f"达到最大尝试次数({MAX_STEPS})，返回最后结果")
-        return (
-            self._repair_subtitle(subtitle_chunk, last_result)
-            if last_result
-            else subtitle_chunk
-        )
+        if last_result:
+            normalized_result, _, _ = self._normalize_result(subtitle_chunk, last_result)
+            return normalized_result
+        return subtitle_chunk
+
+    def _normalize_result(
+        self, original_chunk: Dict[str, str], candidate: Dict[str, Any]
+    ) -> Tuple[Dict[str, str], List[str], bool]:
+        """Normalize LLM output and fall back to original text for unsafe items."""
+        normalized: Dict[str, str] = {}
+        issues: List[str] = []
+        expected_keys = set(original_chunk.keys())
+        actual_keys = set(candidate.keys())
+        missing_or_extra = expected_keys != actual_keys
+
+        missing = expected_keys - actual_keys
+        extra = actual_keys - expected_keys
+        if missing:
+            issues.append(f"Missing keys: {sorted(missing)}")
+        if extra:
+            issues.append(f"Extra keys dropped: {sorted(extra)}")
+
+        for key in sorted(original_chunk.keys(), key=int):
+            original_text = original_chunk[key]
+            value = candidate.get(key, original_text)
+            if not isinstance(value, str):
+                value = str(value)
+
+            if not value.strip():
+                issues.append(f"Key '{key}': empty value, kept original")
+                normalized[key] = original_text
+                continue
+
+            if self._is_excessive_change(original_text, value):
+                issues.append(f"Key '{key}': changed too much, kept original")
+                normalized[key] = original_text
+                continue
+
+            normalized[key] = value
+
+        return normalized, issues, missing_or_extra
+
+    @staticmethod
+    def _format_issues(issues: List[str]) -> str:
+        shown = issues[:MAX_VALIDATION_FEEDBACK_ITEMS]
+        message = "; ".join(shown)
+        if len(issues) > MAX_VALIDATION_FEEDBACK_ITEMS:
+            message += f"; 等 {len(issues)} 项"
+        return message
+
+    @staticmethod
+    def _is_excessive_change(original_text: str, optimized_text: str) -> bool:
+        original_cleaned = re.sub(r"\s+", " ", original_text).strip()
+        optimized_cleaned = re.sub(r"\s+", " ", optimized_text).strip()
+        matcher = difflib.SequenceMatcher(None, original_cleaned, optimized_cleaned)
+        similarity = matcher.ratio()
+        similarity_threshold = 0.3 if count_words(original_text) <= 10 else 0.7
+        return similarity < similarity_threshold
 
     def _validate_optimization_result(
         self, original_chunk: Dict[str, str], optimized_chunk: Dict[str, str]
@@ -379,45 +602,6 @@ class SubtitleOptimizer:
         return True, ""
 
     @staticmethod
-    def _repair_subtitle(
-        original: Dict[str, str], optimized: Dict[str, str]
-    ) -> Dict[str, str]:
-        """修复字幕对齐
-
-        使用SubtitleAligner对齐原文和优化后的文本，
-        处理优化过程中可能产生的段落合并或拆分。
-
-        Args:
-            original: 原始字幕字典
-            optimized: 优化后字幕字典
-
-        Returns:
-            对齐后的字幕字典
-        """
-        try:
-            aligner = SubtitleAligner()
-            original_list = list(original.values())
-            optimized_list = list(optimized.values())
-
-            aligned_source, aligned_target = aligner.align_texts(
-                original_list, optimized_list
-            )
-
-            if len(aligned_source) != len(aligned_target):
-                logger.warning("对齐后长度不一致，返回原优化结果")
-                return optimized
-
-            # 重建字典，保持原有索引
-            start_id = next(iter(original.keys()))
-            return {
-                str(int(start_id) + i): text for i, text in enumerate(aligned_target)
-            }
-
-        except Exception as e:
-            logger.error(f"对齐失败：{str(e)}，返回原优化结果")
-            return optimized
-
-    @staticmethod
     def _create_segments(
         original_segments: List[ASRDataSeg],
         optimized_dict: Dict[str, str],
@@ -447,10 +631,4 @@ class SubtitleOptimizer:
 
         self.is_running = False
 
-        if self.executor:
-            try:
-                self.executor.shutdown(wait=False, cancel_futures=True)
-            except Exception:
-                pass
-            finally:
-                self.executor = None
+        self._terminate_active_jobs()
