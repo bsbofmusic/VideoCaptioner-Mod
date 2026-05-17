@@ -46,9 +46,9 @@ gui = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/WEIFENG2333/VideoCaptioner"
-Repository = "https://github.com/WEIFENG2333/VideoCaptioner"
-Issues = "https://github.com/WEIFENG2333/VideoCaptioner/issues"
+Homepage = "https://github.com/bsbofmusic/VideoCaptioner-Mod"
+Repository = "https://github.com/bsbofmusic/VideoCaptioner-Mod"
+Issues = "https://github.com/bsbofmusic/VideoCaptioner-Mod/issues"
 
 [project.scripts]
 videocaptioner = "videocaptioner.cli.main:main"

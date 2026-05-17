@@ -2,7 +2,7 @@
 
 VideoCaptioner-Mod 是基于 [WEIFENG2333/VideoCaptioner](https://github.com/WEIFENG2333/VideoCaptioner) 的非官方修改版。
 
-- 当前版本：`0.0.3-test`
+- 当前版本：`0.0.3`
 - 原项目：<https://github.com/WEIFENG2333/VideoCaptioner>
 - 本修改版仓库：<https://github.com/bsbofmusic/VideoCaptioner-Mod>
 - 许可证：GNU General Public License v3.0，见 [LICENSE](LICENSE)
@@ -32,10 +32,10 @@ VideoCaptioner-Mod 是基于 [WEIFENG2333/VideoCaptioner](https://github.com/WEI
 
 ## 主要修改
 
-### 0.0.3-test
+### 0.0.3
 
 - 在“设置 → 翻译与优化”中新增“校对并发数量”滑条，范围 `1-20`，默认 `10`。
-- 在“设置 → 翻译与优化”中新增“校对 batch size”滑条，范围 `10-100`，默认 `50`。
+- 在“设置 → 翻译与优化”中新增“校对批次大小”滑条，范围 `10-100`，默认 `50`。
 - 字幕校对阶段现在独立读取上述两个参数；翻译服务的“线程数/批处理大小”仍只影响翻译流程。
 
 ### 0.0.2
@@ -53,12 +53,15 @@ VideoCaptioner-Mod 是基于 [WEIFENG2333/VideoCaptioner](https://github.com/WEI
 - 新增 `Codex` LLM 提供商，使用 OpenAI Responses API `/responses`。
 - 新增 `Anthropic` LLM 提供商，使用 Anthropic Messages API `/messages`，默认模型配置为 `MiniMax-M2.7`。
 - 保留原有 OpenAI 兼容提供商逻辑，非 Codex/Anthropic 提供商继续走原版 Chat Completions 路径。
-- ASR 公共接口本地限额自动刷新，仅清理本地 `rate_limit:*` 记录，不删除 ASR 结果缓存和用户配置。
 - 增加字幕处理防卡死机制：LLM 请求超时、字幕优化批次无进度超时、批处理任务无进度超时。
 - 任务失败时尽量给出具体原因；批处理中的非 LLM 问题自动重试最多 5 次。
 - 增加 LLM 请求日志对 Responses API 的兼容处理。
 
 ## 安装与运行
+
+Windows 用户可在 [GitHub Release](https://github.com/bsbofmusic/VideoCaptioner-Mod/releases/latest) 下载安装包。安装包会创建开始菜单项，并可通过系统“应用和功能”或开始菜单卸载项卸载。
+
+源码运行：
 
 ```bash
 git clone https://github.com/bsbofmusic/VideoCaptioner-Mod.git

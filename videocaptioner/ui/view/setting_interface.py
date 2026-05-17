@@ -113,7 +113,7 @@ class SettingInterface(ScrollArea):
         self.optimizeBatchSizeCard = RangeSettingCard(
             cfg.optimize_batch_size,
             FIF.ALIGNMENT,
-            self.tr("校对 batch size"),
+            self.tr("校对批次大小"),
             self.tr(
                 "每个校对批次包含的字幕行数，数值越大请求次数越少，越小越稳定且便于排查问题"
             ),
@@ -618,6 +618,9 @@ class SettingInterface(ScrollArea):
             self.translatorServiceCard.comboBox.currentText()
         )
 
+        # 初始化字幕校正相关配置卡片状态
+        self.__onSubtitleOptimizationChanged(cfg.need_optimize.value)
+
         self.setStyleSheet(
             """
             SettingInterface, #scrollWidget {
@@ -723,6 +726,9 @@ class SettingInterface(ScrollArea):
         )
         self.subtitleCorrectCard.checkedChanged.connect(
             signalBus.subtitle_optimization_changed
+        )
+        self.subtitleCorrectCard.checkedChanged.connect(
+            self.__onSubtitleOptimizationChanged
         )
         self.subtitleTranslateCard.checkedChanged.connect(
             signalBus.subtitle_translation_changed
@@ -904,6 +910,14 @@ class SettingInterface(ScrollArea):
 
         # 更新布局
         self.llmGroup.adjustSize()
+        self.expandLayout.update()
+
+    def __onSubtitleOptimizationChanged(self, is_enabled: bool):
+        """处理字幕校正开关变化，禁用仅在校正时生效的参数。"""
+        for card in (self.optimizeThreadNumCard, self.optimizeBatchSizeCard):
+            card.setEnabled(is_enabled)
+
+        self.translateGroup.adjustSize()
         self.expandLayout.update()
 
     def __onTranslatorServiceChanged(self, service):

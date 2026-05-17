@@ -10,13 +10,13 @@ try:
 except Exception:
     VERSION = "0.0.0-dev"
 YEAR = 2026
-APP_NAME = "VideoCaptioner"
+APP_NAME = "VideoCaptioner-Mod"
 AUTHOR = "Weifeng"
 
-HELP_URL = "https://github.com/WEIFENG2333/VideoCaptioner"
-GITHUB_REPO_URL = "https://github.com/WEIFENG2333/VideoCaptioner"
-RELEASE_URL = "https://github.com/WEIFENG2333/VideoCaptioner/releases/latest"
-FEEDBACK_URL = "https://github.com/WEIFENG2333/VideoCaptioner/issues"
+HELP_URL = "https://github.com/bsbofmusic/VideoCaptioner-Mod"
+GITHUB_REPO_URL = "https://github.com/bsbofmusic/VideoCaptioner-Mod"
+RELEASE_URL = "https://github.com/bsbofmusic/VideoCaptioner-Mod/releases/latest"
+FEEDBACK_URL = "https://github.com/bsbofmusic/VideoCaptioner-Mod/issues"
 
 # Detect whether running from source tree, pip-installed, or PyInstaller-frozen
 _PACKAGE_DIR = Path(__file__).parent
@@ -30,7 +30,7 @@ if getattr(sys, "frozen", False):
     ROOT_PATH = Path(getattr(sys, "_MEIPASS", _PROJECT_ROOT))
     RESOURCE_PATH = ROOT_PATH / "resource"
     APPDATA_PATH = Path(user_data_dir(APP_NAME))
-    WORK_PATH = Path.home() / "VideoCaptioner"
+    WORK_PATH = Path.home() / APP_NAME
 elif (_PROJECT_ROOT / "resource").is_dir():
     ROOT_PATH = _PROJECT_ROOT
     RESOURCE_PATH = ROOT_PATH / "resource"
@@ -43,7 +43,7 @@ else:
     ROOT_PATH = Path(user_data_dir(APP_NAME))
     RESOURCE_PATH = ROOT_PATH / "resource"
     APPDATA_PATH = ROOT_PATH
-    WORK_PATH = Path.home() / "VideoCaptioner"
+    WORK_PATH = Path.home() / APP_NAME
 
 BIN_PATH = RESOURCE_PATH / "bin"
 ASSETS_PATH = RESOURCE_PATH / "assets"

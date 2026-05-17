@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.3-test
+## 0.0.3
 
 - Added proofreading concurrency slider under Settings → 翻译与优化.
 - Added proofreading batch-size slider under Settings → 翻译与优化.
@@ -20,7 +20,6 @@
 - Added Codex provider based on OpenAI Responses API `/responses`.
 - Added Anthropic provider based on Anthropic Messages API `/messages`.
 - Preserved original OpenAI-compatible Chat Completions behavior for non-Codex/non-Anthropic providers.
-- Added local ASR rate-limit refresh for public ASR services.
 - Changed subtitle correction batch size default to 30 lines.
 - Added watchdogs/timeouts for LLM calls, subtitle optimization, and batch processing.
 - Added non-LLM automatic retry for batch tasks, up to 5 attempts.

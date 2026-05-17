@@ -1,4 +1,4 @@
-﻿# Third Party Notices
+# Third Party Notices
 
 This project is based on [WEIFENG2333/VideoCaptioner](https://github.com/WEIFENG2333/VideoCaptioner) and remains licensed under GPL-3.0.
 
@@ -26,3 +26,7 @@ The bundled font under `videocaptioner/resources/fonts/` is provided by its upst
 If redistributing binaries with FFmpeg or other external executables, include their corresponding licenses, build information, and source-code access notices as required by their licenses.
 
 Do not redistribute API keys, private configuration files, logs, caches, generated subtitles, generated media, or user data.
+
+## Binary distribution notes
+
+Windows installer builds may bundle `ffmpeg.exe` obtained through the `imageio-ffmpeg` Python package for local media processing. FFmpeg is distributed by its upstream project under its own license terms. Source code and license information are available from <https://ffmpeg.org/> and <https://github.com/imageio/imageio-ffmpeg>.
