@@ -36,7 +36,7 @@ SERVICE_TO_TYPE = {
 }
 
 logger = setup_logger("subtitle_optimization_thread")
-SUBTITLE_STALL_TIMEOUT_SECONDS = 150
+SUBTITLE_STALL_TIMEOUT_SECONDS = 3 * 60
 
 
 def create_translator_from_config(

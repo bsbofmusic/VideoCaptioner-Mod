@@ -18,19 +18,18 @@ from ..asr.asr_data import ASRData, ASRDataSeg
 from ..entities import SubtitleProcessData
 from ..llm import call_llm
 from ..prompts import get_prompt
+from ..split.alignment import SubtitleAligner
 from ..utils.logger import setup_logger
 from ..utils.text_utils import count_words
 
 logger = setup_logger("subtitle_optimizer")
 
-MAX_STEPS = 2
-MAX_VALIDATION_FEEDBACK_ITEMS = 5
-OPTIMIZE_LLM_CALL_TIMEOUT_SECONDS = 45
-OPTIMIZE_BATCH_TIMEOUT_SECONDS = 90
+MAX_STEPS = 3
+OPTIMIZE_BATCH_TIMEOUT_SECONDS = 300
 OPTIMIZE_POLL_INTERVAL_SECONDS = 0.5
-OPTIMIZE_MAX_IN_FLIGHT_CAP = 4
+OPTIMIZE_MAX_IN_FLIGHT_CAP = 10
 # Backward-compatible name for old tests/log messages. The optimizer now uses a
-# hard per-batch process timeout instead of a ThreadPoolExecutor no-progress wait.
+# hard per-batch process timeout instead of an unkillable ThreadPoolExecutor wait.
 OPTIMIZE_NO_PROGRESS_TIMEOUT_SECONDS = OPTIMIZE_BATCH_TIMEOUT_SECONDS
 
 
@@ -181,7 +180,6 @@ class SubtitleOptimizer:
             len(chunks),
         )
         next_index = 0
-        consecutive_hard_failures = 0
 
         try:
             while self.is_running and (
@@ -205,24 +203,20 @@ class SubtitleOptimizer:
 
                     made_progress = True
                     self._active_jobs.remove(job)
-                    if status == "ok":
-                        consecutive_hard_failures = 0
-                    else:
-                        consecutive_hard_failures += 1
+                    if status != "ok":
                         logger.error(
                             "字幕优化批次 %s 失败，保留原文：%s",
                             self._chunk_range(job.chunk),
                             error_message,
                         )
+                    else:
+                        logger.info(
+                            "字幕优化批次 %s 完成",
+                            self._chunk_range(job.chunk),
+                        )
 
                     optimized_dict.update(result)
                     self._notify_chunk_completed(job.chunk, result)
-
-                    if consecutive_hard_failures >= max_in_flight:
-                        raise RuntimeError(
-                            f"字幕优化连续 {consecutive_hard_failures} 个批次超时或崩溃，"
-                            f"已停止以避免卡死。最后错误：{error_message}"
-                        )
 
                 if not made_progress:
                     time.sleep(OPTIMIZE_POLL_INTERVAL_SECONDS)
@@ -286,8 +280,8 @@ class SubtitleOptimizer:
         elapsed = now - job.started_at
         if elapsed > OPTIMIZE_BATCH_TIMEOUT_SECONDS:
             error_message = (
-                f"批次 {self._chunk_range(job.chunk)} 超过 "
-                f"{OPTIMIZE_BATCH_TIMEOUT_SECONDS} 秒未完成，已强制终止"
+                f"字幕优化超时：超过 {OPTIMIZE_BATCH_TIMEOUT_SECONDS} 秒"
+                f"没有任何批次完成。未完成批次：{self._chunk_range(job.chunk)}"
             )
             self._kill_job(job)
             return "timeout", job.chunk, error_message
@@ -403,62 +397,34 @@ class SubtitleOptimizer:
                 messages=messages,
                 model=self.model,
                 temperature=0.2,
-                timeout=OPTIMIZE_LLM_CALL_TIMEOUT_SECONDS,
             )
 
             result_text = response.choices[0].message.content
             if not result_text:
-                if step == 0:
-                    messages.append(
-                        {"role": "user", "content": "Output cannot be empty. Return JSON only."}
-                    )
-                    continue
-                return subtitle_chunk
+                raise ValueError("LLM返回空结果")
 
             # 解析结果
-            try:
-                parsed_result = json_repair.loads(result_text)
-            except Exception as e:
-                logger.warning("优化结果 JSON 解析失败：%s", str(e))
-                if step == 0:
-                    messages.append({"role": "assistant", "content": result_text[:1000]})
-                    messages.append(
-                        {"role": "user", "content": "Return ONLY a valid JSON dictionary."}
-                    )
-                    continue
-                return subtitle_chunk
-
+            parsed_result = json_repair.loads(result_text)
             if not isinstance(parsed_result, dict):
-                logger.warning(
-                    "LLM返回结果类型错误，期望dict，实际%s", type(parsed_result)
+                raise ValueError(
+                    f"LLM返回结果类型错误，期望dict，实际{type(parsed_result)}"
                 )
-                if step == 0:
-                    messages.append(
-                        {"role": "user", "content": "Output must be a JSON dictionary."}
-                    )
-                    continue
-                return subtitle_chunk
 
             result_dict: Dict[str, str] = parsed_result
             last_result = result_dict
 
-            normalized_result, issues, missing_or_extra = self._normalize_result(
-                subtitle_chunk, result_dict
+            # 验证结果
+            is_valid, error_message = self._validate_optimization_result(
+                original_chunk=subtitle_chunk, optimized_chunk=result_dict
             )
 
-            if not issues:
-                return normalized_result
+            if is_valid:
+                return self._repair_subtitle(subtitle_chunk, result_dict)
 
-            error_message = self._format_issues(issues)
-            logger.warning("优化结果需要修正：%s", error_message)
-
-            # Missing/extra keys can be fixed by one compact feedback loop. Similarity
-            # failures are deterministic safety checks: keep original text instead of
-            # spending extra LLM calls and risking long stalls.
-            if not missing_or_extra or step >= MAX_STEPS - 1:
-                return normalized_result
-
-            logger.warning("优化键不完整，开始一次反馈修正 (第%s次尝试)", step + 1)
+            # 验证失败，添加反馈。保持原版详细日志，包括 similarity、Original、Optimized。
+            logger.warning(
+                f"优化验证失败，开始反馈循环 (第{step + 1}次尝试): {error_message}"
+            )
             messages.append({"role": "assistant", "content": result_text})
             messages.append(
                 {
@@ -472,64 +438,11 @@ class SubtitleOptimizer:
 
         # 达到最大步数
         logger.warning(f"达到最大尝试次数({MAX_STEPS})，返回最后结果")
-        if last_result:
-            normalized_result, _, _ = self._normalize_result(subtitle_chunk, last_result)
-            return normalized_result
-        return subtitle_chunk
-
-    def _normalize_result(
-        self, original_chunk: Dict[str, str], candidate: Dict[str, Any]
-    ) -> Tuple[Dict[str, str], List[str], bool]:
-        """Normalize LLM output and fall back to original text for unsafe items."""
-        normalized: Dict[str, str] = {}
-        issues: List[str] = []
-        expected_keys = set(original_chunk.keys())
-        actual_keys = set(candidate.keys())
-        missing_or_extra = expected_keys != actual_keys
-
-        missing = expected_keys - actual_keys
-        extra = actual_keys - expected_keys
-        if missing:
-            issues.append(f"Missing keys: {sorted(missing)}")
-        if extra:
-            issues.append(f"Extra keys dropped: {sorted(extra)}")
-
-        for key in sorted(original_chunk.keys(), key=int):
-            original_text = original_chunk[key]
-            value = candidate.get(key, original_text)
-            if not isinstance(value, str):
-                value = str(value)
-
-            if not value.strip():
-                issues.append(f"Key '{key}': empty value, kept original")
-                normalized[key] = original_text
-                continue
-
-            if self._is_excessive_change(original_text, value):
-                issues.append(f"Key '{key}': changed too much, kept original")
-                normalized[key] = original_text
-                continue
-
-            normalized[key] = value
-
-        return normalized, issues, missing_or_extra
-
-    @staticmethod
-    def _format_issues(issues: List[str]) -> str:
-        shown = issues[:MAX_VALIDATION_FEEDBACK_ITEMS]
-        message = "; ".join(shown)
-        if len(issues) > MAX_VALIDATION_FEEDBACK_ITEMS:
-            message += f"; 等 {len(issues)} 项"
-        return message
-
-    @staticmethod
-    def _is_excessive_change(original_text: str, optimized_text: str) -> bool:
-        original_cleaned = re.sub(r"\s+", " ", original_text).strip()
-        optimized_cleaned = re.sub(r"\s+", " ", optimized_text).strip()
-        matcher = difflib.SequenceMatcher(None, original_cleaned, optimized_cleaned)
-        similarity = matcher.ratio()
-        similarity_threshold = 0.3 if count_words(original_text) <= 10 else 0.7
-        return similarity < similarity_threshold
+        return (
+            self._repair_subtitle(subtitle_chunk, last_result)
+            if last_result
+            else subtitle_chunk
+        )
 
     def _validate_optimization_result(
         self, original_chunk: Dict[str, str], optimized_chunk: Dict[str, str]
@@ -600,6 +513,45 @@ class SubtitleOptimizer:
             return False, error_msg
 
         return True, ""
+
+    @staticmethod
+    def _repair_subtitle(
+        original: Dict[str, str], optimized: Dict[str, str]
+    ) -> Dict[str, str]:
+        """修复字幕对齐
+
+        使用SubtitleAligner对齐原文和优化后的文本，
+        处理优化过程中可能产生的段落合并或拆分。
+
+        Args:
+            original: 原始字幕字典
+            optimized: 优化后字幕字典
+
+        Returns:
+            对齐后的字幕字典
+        """
+        try:
+            aligner = SubtitleAligner()
+            original_list = list(original.values())
+            optimized_list = list(optimized.values())
+
+            aligned_source, aligned_target = aligner.align_texts(
+                original_list, optimized_list
+            )
+
+            if len(aligned_source) != len(aligned_target):
+                logger.warning("对齐后长度不一致，返回原优化结果")
+                return optimized
+
+            # 重建字典，保持原有索引
+            start_id = next(iter(original.keys()))
+            return {
+                str(int(start_id) + i): text for i, text in enumerate(aligned_target)
+            }
+
+        except Exception as e:
+            logger.error(f"对齐失败：{str(e)}，返回原优化结果")
+            return optimized
 
     @staticmethod
     def _create_segments(
