@@ -101,6 +101,24 @@ class SettingInterface(ScrollArea):
             cfg.need_optimize,
             self.translateGroup,
         )
+        self.optimizeThreadNumCard = RangeSettingCard(
+            cfg.optimize_thread_num,
+            FIF.SPEED_HIGH,
+            self.tr("校对并发数量"),
+            self.tr(
+                "同时处理字幕校对批次的数量，数值越大速度越快，但可能触发服务商限流或超时"
+            ),
+            parent=self.translateGroup,
+        )
+        self.optimizeBatchSizeCard = RangeSettingCard(
+            cfg.optimize_batch_size,
+            FIF.ALIGNMENT,
+            self.tr("校对 batch size"),
+            self.tr(
+                "每个校对批次包含的字幕行数，数值越大请求次数越少，越小越稳定且便于排查问题"
+            ),
+            parent=self.translateGroup,
+        )
         self.subtitleTranslateCard = SwitchSettingCard(
             FIF.LANGUAGE,
             self.tr("字幕翻译"),
@@ -237,6 +255,8 @@ class SettingInterface(ScrollArea):
 
         # 添加卡片到对应的组
         self.translateGroup.addSettingCard(self.subtitleCorrectCard)
+        self.translateGroup.addSettingCard(self.optimizeThreadNumCard)
+        self.translateGroup.addSettingCard(self.optimizeBatchSizeCard)
         self.translateGroup.addSettingCard(self.subtitleTranslateCard)
         self.translateGroup.addSettingCard(self.targetLanguageCard)
 

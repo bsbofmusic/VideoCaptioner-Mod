@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.3-test
+
+- Added proofreading concurrency slider under Settings → 翻译与优化.
+- Added proofreading batch-size slider under Settings → 翻译与优化.
+- Wired proofreading settings into subtitle optimization independently from translation concurrency and translation batch size.
+- Raised the subtitle optimizer in-flight cap to 20 so the new concurrency slider is effective.
+
 ## 0.0.2
 
 - Added batch preflight checks before starting queued jobs.

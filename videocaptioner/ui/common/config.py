@@ -236,6 +236,12 @@ class Config(QConfig):
     need_optimize = ConfigItem("Subtitle", "NeedOptimize", False, BoolValidator())
     need_translate = ConfigItem("Subtitle", "NeedTranslate", False, BoolValidator())
     need_split = ConfigItem("Subtitle", "NeedSplit", False, BoolValidator())
+    optimize_thread_num = RangeConfigItem(
+        "Subtitle", "OptimizeThreadNum", 10, RangeValidator(1, 20)
+    )
+    optimize_batch_size = RangeConfigItem(
+        "Subtitle", "OptimizeBatchSize", 50, RangeValidator(10, 100)
+    )
     target_language = OptionsConfigItem(
         "Subtitle",
         "TargetLanguage",

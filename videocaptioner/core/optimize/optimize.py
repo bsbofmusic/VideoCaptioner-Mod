@@ -27,7 +27,7 @@ logger = setup_logger("subtitle_optimizer")
 MAX_STEPS = 3
 OPTIMIZE_BATCH_TIMEOUT_SECONDS = 300
 OPTIMIZE_POLL_INTERVAL_SECONDS = 0.5
-OPTIMIZE_MAX_IN_FLIGHT_CAP = 10
+OPTIMIZE_MAX_IN_FLIGHT_CAP = 20
 # Backward-compatible name for old tests/log messages. The optimizer now uses a
 # hard per-batch process timeout instead of an unkillable ThreadPoolExecutor wait.
 OPTIMIZE_NO_PROGRESS_TIMEOUT_SECONDS = OPTIMIZE_BATCH_TIMEOUT_SECONDS

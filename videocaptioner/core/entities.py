@@ -640,6 +640,8 @@ class SubtitleConfig:
     need_reflect: bool = False
     thread_num: int = 10
     batch_size: int = 10
+    optimize_thread_num: int = 10
+    optimize_batch_size: int = 50
     # 字幕布局和分割
     subtitle_layout: SubtitleLayoutEnum = SubtitleLayoutEnum.ORIGINAL_ON_TOP
     max_word_count_cjk: int = 12
@@ -667,6 +669,8 @@ class SubtitleConfig:
         if self.need_optimize:
             lines.append("Optimize: Yes")
             lines.append(f"  Model: {self.llm_model or 'None'}")
+            lines.append(f"  Concurrency: {self.optimize_thread_num}")
+            lines.append(f"  Batch Size: {self.optimize_batch_size}")
             if self.custom_prompt_text:
                 lines.append(f"  Custom Prompt: {self.custom_prompt_text[:30]}...")
 

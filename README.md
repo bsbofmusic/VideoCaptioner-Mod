@@ -2,7 +2,7 @@
 
 VideoCaptioner-Mod 是基于 [WEIFENG2333/VideoCaptioner](https://github.com/WEIFENG2333/VideoCaptioner) 的非官方修改版。
 
-- 当前版本：`0.0.2`
+- 当前版本：`0.0.3-test`
 - 原项目：<https://github.com/WEIFENG2333/VideoCaptioner>
 - 本修改版仓库：<https://github.com/bsbofmusic/VideoCaptioner-Mod>
 - 许可证：GNU General Public License v3.0，见 [LICENSE](LICENSE)
@@ -31,6 +31,12 @@ VideoCaptioner-Mod 是基于 [WEIFENG2333/VideoCaptioner](https://github.com/WEI
 本 README 中的免责声明、用途提醒或风险提示不限制 GPL-3.0 授予你的任何权利。
 
 ## 主要修改
+
+### 0.0.3-test
+
+- 在“设置 → 翻译与优化”中新增“校对并发数量”滑条，范围 `1-20`，默认 `10`。
+- 在“设置 → 翻译与优化”中新增“校对 batch size”滑条，范围 `10-100`，默认 `50`。
+- 字幕校对阶段现在独立读取上述两个参数；翻译服务的“线程数/批处理大小”仍只影响翻译流程。
 
 ### 0.0.2
 

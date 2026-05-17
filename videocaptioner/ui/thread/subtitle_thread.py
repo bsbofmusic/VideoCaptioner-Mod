@@ -171,8 +171,8 @@ class SubtitleThread(QThread):
                 if not subtitle_config.llm_model:
                     raise Exception(self.tr("LLM 模型未配置"))
                 self.optimizer = SubtitleOptimizer(
-                    thread_num=subtitle_config.thread_num,
-                    batch_num=subtitle_config.batch_size,
+                    thread_num=subtitle_config.optimize_thread_num,
+                    batch_num=subtitle_config.optimize_batch_size,
                     model=subtitle_config.llm_model,
                     custom_prompt=custom_prompt or "",
                     update_callback=self.callback,
