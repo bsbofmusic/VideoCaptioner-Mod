@@ -119,6 +119,15 @@ class SettingInterface(ScrollArea):
             ),
             parent=self.translateGroup,
         )
+        self.optimizeTimeoutSecondsCard = RangeSettingCard(
+            cfg.optimize_timeout_seconds,
+            FIF.HISTORY,
+            self.tr("校对超时时间"),
+            self.tr(
+                "控制每个字幕校对 LLM 请求/批次等待的秒数；推理较慢的模型可适当调高以提升校正质量，但卡住的请求也会等待更久"
+            ),
+            parent=self.translateGroup,
+        )
         self.subtitleTranslateCard = SwitchSettingCard(
             FIF.LANGUAGE,
             self.tr("字幕翻译"),
@@ -257,6 +266,7 @@ class SettingInterface(ScrollArea):
         self.translateGroup.addSettingCard(self.subtitleCorrectCard)
         self.translateGroup.addSettingCard(self.optimizeThreadNumCard)
         self.translateGroup.addSettingCard(self.optimizeBatchSizeCard)
+        self.translateGroup.addSettingCard(self.optimizeTimeoutSecondsCard)
         self.translateGroup.addSettingCard(self.subtitleTranslateCard)
         self.translateGroup.addSettingCard(self.targetLanguageCard)
 
@@ -914,7 +924,11 @@ class SettingInterface(ScrollArea):
 
     def __onSubtitleOptimizationChanged(self, is_enabled: bool):
         """处理字幕校正开关变化，禁用仅在校正时生效的参数。"""
-        for card in (self.optimizeThreadNumCard, self.optimizeBatchSizeCard):
+        for card in (
+            self.optimizeThreadNumCard,
+            self.optimizeBatchSizeCard,
+            self.optimizeTimeoutSecondsCard,
+        ):
             card.setEnabled(is_enabled)
 
         self.translateGroup.adjustSize()

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.4
+
+- Added proofreading timeout slider under Settings → 翻译与优化.
+- Wired proofreading timeout into subtitle optimization requests without changing global LLM timeout defaults for other features.
+- Extended the subtitle optimizer per-batch watchdog based on the configured timeout and retry attempts.
+
 ## 0.0.3
 
 - Added proofreading concurrency slider under Settings → 翻译与优化.

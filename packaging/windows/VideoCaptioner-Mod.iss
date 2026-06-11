@@ -1,5 +1,5 @@
 #define MyAppName "VideoCaptioner-Mod"
-#define MyAppVersion "0.0.3"
+#define MyAppVersion "0.0.4"
 #define MyAppPublisher "bsbofmusic"
 #define MyAppURL "https://github.com/bsbofmusic/VideoCaptioner-Mod"
 #define MyAppExeName "VideoCaptioner-Mod.exe"
@@ -17,7 +17,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 LicenseFile=..\..\LICENSE
 OutputDir=..\..\dist\installer
-OutputBaseFilename=VideoCaptioner-Mod-v0.0.3-win-x64-setup
+OutputBaseFilename=VideoCaptioner-Mod-v0.0.4-win-x64-setup
 SetupIconFile=logo.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2

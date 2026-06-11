@@ -2,7 +2,7 @@
 
 VideoCaptioner-Mod 是基于 [WEIFENG2333/VideoCaptioner](https://github.com/WEIFENG2333/VideoCaptioner) 的非官方修改版。
 
-- 当前版本：`0.0.3`
+- 当前版本：`0.0.4`
 - 原项目：<https://github.com/WEIFENG2333/VideoCaptioner>
 - 本修改版仓库：<https://github.com/bsbofmusic/VideoCaptioner-Mod>
 - 许可证：GNU General Public License v3.0，见 [LICENSE](LICENSE)
@@ -10,6 +10,12 @@ VideoCaptioner-Mod 是基于 [WEIFENG2333/VideoCaptioner](https://github.com/WEI
 本仓库不是原作者官方版本，也不代表原作者维护、认可或背书。原作者归属、修改版归属与非官方声明见 [NOTICE](NOTICE)。
 
 ## 更新说明
+
+### 0.0.4
+
+- 在“设置 → 翻译与优化”中新增“校对超时时间”滑条，范围 `90-600` 秒，默认 `90` 秒。
+- 字幕校对阶段会将该超时时间用于每次 LLM 校对请求；推理较慢的模型可适当调高，以减少过早超时并改善校正质量。
+- 字幕校对批次 watchdog 会随超时时间扩展，避免合法重试在较长超时配置下被提前终止。
 
 ### 0.0.3
 

@@ -21,7 +21,7 @@ from videocaptioner.core.llm.context import (
     set_task_context,
     update_stage,
 )
-from videocaptioner.core.optimize.optimize import SubtitleOptimizer
+from videocaptioner.core.optimize.optimize import MAX_STEPS, SubtitleOptimizer
 from videocaptioner.core.split.split import SubtitleSplitter
 from videocaptioner.core.translate.factory import TranslatorFactory
 from videocaptioner.core.translate.types import TranslatorType
@@ -81,6 +81,7 @@ class SubtitleThread(QThread):
         self.splitter = None
         self.translator = None
         self._watchdog_timer = None
+        self._watchdog_timeout_seconds = SUBTITLE_STALL_TIMEOUT_SECONDS
         self._last_progress_time = time.time()
         self._last_progress_message = ""
         self._watchdog_triggered = False
@@ -146,6 +147,7 @@ class SubtitleThread(QThread):
             # 2. 重新断句（对于字词级字幕）
             if asr_data.is_word_timestamp():
                 update_stage("split")
+                self._reset_watchdog("字幕断句", SUBTITLE_STALL_TIMEOUT_SECONDS)
                 self.progress.emit(5, self.tr("字幕断句..."))
                 logger.info("正在字幕断句...")
                 self.splitter = SubtitleSplitter(
@@ -165,6 +167,10 @@ class SubtitleThread(QThread):
 
             if subtitle_config.need_optimize:
                 update_stage("optimize")
+                self._reset_watchdog(
+                    "优化字幕",
+                    self._optimize_watchdog_timeout(subtitle_config),
+                )
                 self.progress.emit(0, self.tr("优化字幕..."))
                 logger.info("正在优化字幕...")
                 self.finished_subtitle_length = 0
@@ -175,6 +181,7 @@ class SubtitleThread(QThread):
                     batch_num=subtitle_config.optimize_batch_size,
                     model=subtitle_config.llm_model,
                     custom_prompt=custom_prompt or "",
+                    timeout_seconds=subtitle_config.optimize_timeout_seconds,
                     update_callback=self.callback,
                 )
                 asr_data = self.optimizer.optimize_subtitle(asr_data)
@@ -186,6 +193,7 @@ class SubtitleThread(QThread):
             # 4. 翻译字幕
             if subtitle_config.need_translate:
                 update_stage("translate")
+                self._reset_watchdog("翻译字幕", SUBTITLE_STALL_TIMEOUT_SECONDS)
                 self.progress.emit(0, self.tr("翻译字幕..."))
                 logger.info("正在翻译字幕...")
                 self.finished_subtitle_length = 0
@@ -305,12 +313,20 @@ class SubtitleThread(QThread):
             logger.error(f"停止线程时出错：{str(e)}")
             self.progress.emit(100, self.tr("终止时发生错误"))
 
-    def _reset_watchdog(self, message: str):
+    @staticmethod
+    def _optimize_watchdog_timeout(subtitle_config: SubtitleConfig) -> int:
+        """Return a stage watchdog long enough for configured proofreading retries."""
+        timeout_seconds = max(1, int(subtitle_config.optimize_timeout_seconds or 90))
+        return max(SUBTITLE_STALL_TIMEOUT_SECONDS, timeout_seconds * MAX_STEPS + 30)
+
+    def _reset_watchdog(self, message: str, timeout_seconds: int | None = None):
         self._last_progress_time = time.time()
         self._last_progress_message = message
+        if timeout_seconds is not None:
+            self._watchdog_timeout_seconds = max(1, int(timeout_seconds))
         self._cancel_watchdog()
         self._watchdog_timer = threading.Timer(
-            SUBTITLE_STALL_TIMEOUT_SECONDS, self._on_watchdog_timeout
+            self._watchdog_timeout_seconds, self._on_watchdog_timeout
         )
         self._watchdog_timer.daemon = True
         self._watchdog_timer.start()
@@ -325,7 +341,7 @@ class SubtitleThread(QThread):
             return
         self._watchdog_triggered = True
         message = (
-            f"字幕处理超过 {SUBTITLE_STALL_TIMEOUT_SECONDS} 秒无进度，已判定卡死。"
+            f"字幕处理超过 {self._watchdog_timeout_seconds} 秒无进度，已判定卡死。"
             f"最后状态：{self._last_progress_message or '未知'}"
         )
         logger.error(message)

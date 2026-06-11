@@ -242,6 +242,9 @@ class Config(QConfig):
     optimize_batch_size = RangeConfigItem(
         "Subtitle", "OptimizeBatchSize", 50, RangeValidator(10, 100)
     )
+    optimize_timeout_seconds = RangeConfigItem(
+        "Subtitle", "OptimizeTimeoutSeconds", 90, RangeValidator(90, 600)
+    )
     target_language = OptionsConfigItem(
         "Subtitle",
         "TargetLanguage",

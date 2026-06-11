@@ -19,6 +19,7 @@ from ..entities import SubtitleProcessData
 from ..llm import call_llm
 from ..prompts import get_prompt
 from ..split.alignment import SubtitleAligner
+from ..utils.cache import disable_cache, enable_cache, is_cache_enabled
 from ..utils.logger import setup_logger
 from ..utils.text_utils import count_words
 
@@ -46,14 +47,22 @@ def _optimize_chunk_process(
     subtitle_chunk: Dict[str, str],
     model: str,
     custom_prompt: str,
+    timeout_seconds: int = 90,
+    cache_enabled: bool = True,
 ) -> None:
     """Optimize one batch in a child process so the parent can kill hard hangs."""
     try:
+        if cache_enabled:
+            enable_cache()
+        else:
+            disable_cache()
+
         optimizer = SubtitleOptimizer(
             thread_num=1,
             batch_num=max(len(subtitle_chunk), 1),
             model=model,
             custom_prompt=custom_prompt,
+            timeout_seconds=timeout_seconds,
             update_callback=None,
         )
         result = optimizer.agent_loop(subtitle_chunk)
@@ -86,6 +95,7 @@ class SubtitleOptimizer:
         model: str,
         custom_prompt: str,
         update_callback: Optional[Callable] = None,
+        timeout_seconds: int = 90,
     ):
         """初始化优化器
 
@@ -94,13 +104,18 @@ class SubtitleOptimizer:
             batch_num: 每批处理的字幕数量
             model: LLM模型名称
             custom_prompt: 自定义优化提示词
-            temperature: LLM温度参数
             update_callback: 进度更新回调函数
+            timeout_seconds: 每次校对 LLM 请求的超时时间（秒）
         """
         self.thread_num = thread_num
         self.batch_num = batch_num
         self.model = model
         self.custom_prompt = custom_prompt
+        self.timeout_seconds = max(1, int(timeout_seconds or 90))
+        self.batch_timeout_seconds = max(
+            OPTIMIZE_BATCH_TIMEOUT_SECONDS,
+            self.timeout_seconds * MAX_STEPS + 30,
+        )
         self.update_callback = update_callback
 
         self.is_running = True
@@ -237,7 +252,14 @@ class SubtitleOptimizer:
         parent_conn, child_conn = ctx.Pipe(duplex=False)
         process = ctx.Process(
             target=_optimize_chunk_process,
-            args=(child_conn, chunk, self.model, self.custom_prompt),
+            args=(
+                child_conn,
+                chunk,
+                self.model,
+                self.custom_prompt,
+                self.timeout_seconds,
+                is_cache_enabled(),
+            ),
         )
         process.daemon = True
         process.start()
@@ -278,9 +300,9 @@ class SubtitleOptimizer:
             return "error", job.chunk, f"子进程异常退出，exit_code={exit_code}"
 
         elapsed = now - job.started_at
-        if elapsed > OPTIMIZE_BATCH_TIMEOUT_SECONDS:
+        if elapsed > self.batch_timeout_seconds:
             error_message = (
-                f"字幕优化超时：超过 {OPTIMIZE_BATCH_TIMEOUT_SECONDS} 秒"
+                f"字幕优化超时：超过 {self.batch_timeout_seconds} 秒"
                 f"没有任何批次完成。未完成批次：{self._chunk_range(job.chunk)}"
             )
             self._kill_job(job)
@@ -397,6 +419,7 @@ class SubtitleOptimizer:
                 messages=messages,
                 model=self.model,
                 temperature=0.2,
+                timeout=self.timeout_seconds,
             )
 
             result_text = response.choices[0].message.content
