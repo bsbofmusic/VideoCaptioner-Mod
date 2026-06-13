@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.5
+
+- Added proofreading retry-count slider under Settings → 翻译与优化.
+- Wired proofreading retry count into the optimizer feedback loop, child process isolation, and optimize-stage watchdog.
+- Fixed media-file drag-and-drop on the task creation search box.
+- Backported the official idempotent Windows long-path prefix fix.
+
 ## 0.0.4
 
 - Added proofreading timeout slider under Settings → 翻译与优化.

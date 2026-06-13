@@ -191,6 +191,7 @@ class TaskFactory:
             optimize_thread_num=cfg.optimize_thread_num.value,
             optimize_batch_size=cfg.optimize_batch_size.value,
             optimize_timeout_seconds=cfg.optimize_timeout_seconds.value,
+            optimize_retry_count=cfg.optimize_retry_count.value,
             # 字幕布局、样式
             subtitle_layout=cfg.subtitle_layout.value,  # Now returns SubtitleLayoutEnum
             subtitle_style=TaskFactory.get_ass_style(cfg.subtitle_style_name.value),

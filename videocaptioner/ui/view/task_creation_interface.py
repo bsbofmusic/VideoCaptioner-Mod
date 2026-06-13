@@ -3,7 +3,7 @@ import os
 import sys
 from urllib.parse import urlparse
 
-from PyQt5.QtCore import QStandardPaths, Qt, pyqtSignal
+from PyQt5.QtCore import QEvent, QStandardPaths, Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
@@ -95,6 +95,8 @@ class TaskCreationInterface(QWidget):
         self.search_input.setPlaceholderText(self.tr("请拖拽文件或输入视频URL"))
         self.search_input.setFixedHeight(40)
         self.search_input.setClearButtonEnabled(True)
+        self.search_input.setAcceptDrops(True)
+        self.search_input.installEventFilter(self)
         self.search_input.focusOutEvent = lambda e: super(
             LineEdit, self.search_input
         ).focusOutEvent(e)
@@ -241,10 +243,39 @@ class TaskCreationInterface(QWidget):
             self.start_button.setIcon(FluentIcon.FOLDER)
 
     def dragEnterEvent(self, event):
-        event.accept() if event.mimeData().hasUrls() else event.ignore()
+        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
+
+    def dragMoveEvent(self, event):
+        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
 
     def dropEvent(self, event):
-        files = [u.toLocalFile() for u in event.mimeData().urls()]
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            self._handle_dropped_files(
+                [u.toLocalFile() for u in event.mimeData().urls()]
+            )
+        else:
+            event.ignore()
+
+    def eventFilter(self, watched, event):
+        if watched is self.search_input and event.type() in (
+            QEvent.DragEnter,
+            QEvent.DragMove,
+            QEvent.Drop,
+        ):
+            if event.mimeData().hasUrls():
+                event.acceptProposedAction()
+                if event.type() == QEvent.Drop:
+                    self._handle_dropped_files(
+                        [u.toLocalFile() for u in event.mimeData().urls()]
+                    )
+                return True
+            event.ignore()
+            return True
+
+        return super().eventFilter(watched, event)
+
+    def _handle_dropped_files(self, files):
         for file_path in files:
             if not os.path.isfile(file_path):
                 continue

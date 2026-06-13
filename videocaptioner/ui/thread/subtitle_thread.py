@@ -21,7 +21,12 @@ from videocaptioner.core.llm.context import (
     set_task_context,
     update_stage,
 )
-from videocaptioner.core.optimize.optimize import MAX_STEPS, SubtitleOptimizer
+from videocaptioner.core.optimize.optimize import (
+    OPTIMIZE_DEFAULT_RETRY_COUNT,
+    OPTIMIZE_RETRY_MAX,
+    OPTIMIZE_RETRY_MIN,
+    SubtitleOptimizer,
+)
 from videocaptioner.core.split.split import SubtitleSplitter
 from videocaptioner.core.translate.factory import TranslatorFactory
 from videocaptioner.core.translate.types import TranslatorType
@@ -182,6 +187,7 @@ class SubtitleThread(QThread):
                     model=subtitle_config.llm_model,
                     custom_prompt=custom_prompt or "",
                     timeout_seconds=subtitle_config.optimize_timeout_seconds,
+                    retry_count=subtitle_config.optimize_retry_count,
                     update_callback=self.callback,
                 )
                 asr_data = self.optimizer.optimize_subtitle(asr_data)
@@ -317,7 +323,14 @@ class SubtitleThread(QThread):
     def _optimize_watchdog_timeout(subtitle_config: SubtitleConfig) -> int:
         """Return a stage watchdog long enough for configured proofreading retries."""
         timeout_seconds = max(1, int(subtitle_config.optimize_timeout_seconds or 90))
-        return max(SUBTITLE_STALL_TIMEOUT_SECONDS, timeout_seconds * MAX_STEPS + 30)
+        retry_count = min(
+            OPTIMIZE_RETRY_MAX,
+            max(
+                OPTIMIZE_RETRY_MIN,
+                int(subtitle_config.optimize_retry_count or OPTIMIZE_DEFAULT_RETRY_COUNT),
+            ),
+        )
+        return max(SUBTITLE_STALL_TIMEOUT_SECONDS, timeout_seconds * retry_count + 30)
 
     def _reset_watchdog(self, message: str, timeout_seconds: int | None = None):
         self._last_progress_time = time.time()

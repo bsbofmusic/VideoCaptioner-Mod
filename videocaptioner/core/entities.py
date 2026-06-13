@@ -643,6 +643,7 @@ class SubtitleConfig:
     optimize_thread_num: int = 10
     optimize_batch_size: int = 50
     optimize_timeout_seconds: int = 90
+    optimize_retry_count: int = 3
     # 字幕布局和分割
     subtitle_layout: SubtitleLayoutEnum = SubtitleLayoutEnum.ORIGINAL_ON_TOP
     max_word_count_cjk: int = 12
@@ -673,6 +674,7 @@ class SubtitleConfig:
             lines.append(f"  Concurrency: {self.optimize_thread_num}")
             lines.append(f"  Batch Size: {self.optimize_batch_size}")
             lines.append(f"  Timeout Seconds: {self.optimize_timeout_seconds}")
+            lines.append(f"  Retry Count: {self.optimize_retry_count}")
             if self.custom_prompt_text:
                 lines.append(f"  Custom Prompt: {self.custom_prompt_text[:30]}...")
 

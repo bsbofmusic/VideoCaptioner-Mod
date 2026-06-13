@@ -128,6 +128,15 @@ class SettingInterface(ScrollArea):
             ),
             parent=self.translateGroup,
         )
+        self.optimizeRetryCountCard = RangeSettingCard(
+            cfg.optimize_retry_count,
+            FIF.SPEED_HIGH,
+            self.tr("校对重试次数"),
+            self.tr(
+                "每个字幕校对批次最多尝试的次数，数值越大越容易通过反馈循环修正结果，但请求次数和耗时也会增加"
+            ),
+            parent=self.translateGroup,
+        )
         self.subtitleTranslateCard = SwitchSettingCard(
             FIF.LANGUAGE,
             self.tr("字幕翻译"),
@@ -267,6 +276,7 @@ class SettingInterface(ScrollArea):
         self.translateGroup.addSettingCard(self.optimizeThreadNumCard)
         self.translateGroup.addSettingCard(self.optimizeBatchSizeCard)
         self.translateGroup.addSettingCard(self.optimizeTimeoutSecondsCard)
+        self.translateGroup.addSettingCard(self.optimizeRetryCountCard)
         self.translateGroup.addSettingCard(self.subtitleTranslateCard)
         self.translateGroup.addSettingCard(self.targetLanguageCard)
 
@@ -928,6 +938,7 @@ class SettingInterface(ScrollArea):
             self.optimizeThreadNumCard,
             self.optimizeBatchSizeCard,
             self.optimizeTimeoutSecondsCard,
+            self.optimizeRetryCountCard,
         ):
             card.setEnabled(is_enabled)
 

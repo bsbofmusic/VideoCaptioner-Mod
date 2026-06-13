@@ -78,6 +78,7 @@ DEFAULTS: Dict[str, Any] = {
         "max_word_count_english": 12,
         "thread_num": 4,
         "batch_size": 10,
+        "retry_count": 3,
     },
     "translate": {
         "service": "llm",

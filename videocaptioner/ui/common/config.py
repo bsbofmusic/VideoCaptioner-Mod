@@ -245,6 +245,9 @@ class Config(QConfig):
     optimize_timeout_seconds = RangeConfigItem(
         "Subtitle", "OptimizeTimeoutSeconds", 90, RangeValidator(90, 600)
     )
+    optimize_retry_count = RangeConfigItem(
+        "Subtitle", "OptimizeRetryCount", 3, RangeValidator(3, 50)
+    )
     target_language = OptionsConfigItem(
         "Subtitle",
         "TargetLanguage",

@@ -2,7 +2,7 @@
 
 VideoCaptioner-Mod 是基于 [WEIFENG2333/VideoCaptioner](https://github.com/WEIFENG2333/VideoCaptioner) 的非官方修改版。
 
-- 当前版本：`0.0.4`
+- 当前版本：`0.0.5`
 - 原项目：<https://github.com/WEIFENG2333/VideoCaptioner>
 - 本修改版仓库：<https://github.com/bsbofmusic/VideoCaptioner-Mod>
 - 许可证：GNU General Public License v3.0，见 [LICENSE](LICENSE)
@@ -10,6 +10,13 @@ VideoCaptioner-Mod 是基于 [WEIFENG2333/VideoCaptioner](https://github.com/WEI
 本仓库不是原作者官方版本，也不代表原作者维护、认可或背书。原作者归属、修改版归属与非官方声明见 [NOTICE](NOTICE)。
 
 ## 更新说明
+
+### 0.0.5
+
+- 在“设置 → 翻译与优化”中新增“校对重试次数”滑条，范围 `3-50` 次，默认 `3` 次。
+- 字幕校对阶段会将该次数用于每个批次的 LLM 验证反馈循环，便于按模型稳定性自定义校对精度。
+- 修复首页搜索框拖拽媒体文件时可能无法触发导入的问题。
+- 兼容官方已修复的 Windows 长路径前缀幂等处理，避免已带 `\\?\` 前缀的路径被重复添加前缀。
 
 ### 0.0.4
 

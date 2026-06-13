@@ -73,6 +73,7 @@ def run(args: Namespace, config: dict) -> int:
     need_reflect = get(config, "translate.reflect", False)
     thread_num = get(config, "subtitle.thread_num", 4)
     batch_size = get(config, "subtitle.batch_size", 10)
+    retry_count = get(config, "subtitle.retry_count", 3)
     max_cjk = get(config, "subtitle.max_word_count_cjk", 18)
     max_english = get(config, "subtitle.max_word_count_english", 12)
     out_fmt = get(config, "output.format", "srt")
@@ -165,6 +166,7 @@ def run(args: Namespace, config: dict) -> int:
                 batch_num=batch_size,
                 model=llm_model,
                 custom_prompt=custom_prompt,
+                retry_count=retry_count,
                 update_callback=callback,
             )
             asr_data = optimizer.optimize_subtitle(asr_data)

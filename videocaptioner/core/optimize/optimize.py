@@ -25,7 +25,10 @@ from ..utils.text_utils import count_words
 
 logger = setup_logger("subtitle_optimizer")
 
-MAX_STEPS = 3
+OPTIMIZE_RETRY_MIN = 3
+OPTIMIZE_RETRY_MAX = 50
+OPTIMIZE_DEFAULT_RETRY_COUNT = 3
+MAX_STEPS = OPTIMIZE_DEFAULT_RETRY_COUNT
 OPTIMIZE_BATCH_TIMEOUT_SECONDS = 300
 OPTIMIZE_POLL_INTERVAL_SECONDS = 0.5
 OPTIMIZE_MAX_IN_FLIGHT_CAP = 20
@@ -48,6 +51,7 @@ def _optimize_chunk_process(
     model: str,
     custom_prompt: str,
     timeout_seconds: int = 90,
+    retry_count: int = OPTIMIZE_DEFAULT_RETRY_COUNT,
     cache_enabled: bool = True,
 ) -> None:
     """Optimize one batch in a child process so the parent can kill hard hangs."""
@@ -63,6 +67,7 @@ def _optimize_chunk_process(
             model=model,
             custom_prompt=custom_prompt,
             timeout_seconds=timeout_seconds,
+            retry_count=retry_count,
             update_callback=None,
         )
         result = optimizer.agent_loop(subtitle_chunk)
@@ -96,6 +101,7 @@ class SubtitleOptimizer:
         custom_prompt: str,
         update_callback: Optional[Callable] = None,
         timeout_seconds: int = 90,
+        retry_count: int = OPTIMIZE_DEFAULT_RETRY_COUNT,
     ):
         """初始化优化器
 
@@ -106,15 +112,20 @@ class SubtitleOptimizer:
             custom_prompt: 自定义优化提示词
             update_callback: 进度更新回调函数
             timeout_seconds: 每次校对 LLM 请求的超时时间（秒）
+            retry_count: 每个批次最多校对尝试次数
         """
         self.thread_num = thread_num
         self.batch_num = batch_num
         self.model = model
         self.custom_prompt = custom_prompt
         self.timeout_seconds = max(1, int(timeout_seconds or 90))
+        self.retry_count = min(
+            OPTIMIZE_RETRY_MAX,
+            max(OPTIMIZE_RETRY_MIN, int(retry_count or OPTIMIZE_DEFAULT_RETRY_COUNT)),
+        )
         self.batch_timeout_seconds = max(
             OPTIMIZE_BATCH_TIMEOUT_SECONDS,
-            self.timeout_seconds * MAX_STEPS + 30,
+            self.timeout_seconds * self.retry_count + 30,
         )
         self.update_callback = update_callback
 
@@ -258,6 +269,7 @@ class SubtitleOptimizer:
                 self.model,
                 self.custom_prompt,
                 self.timeout_seconds,
+                self.retry_count,
                 is_cache_enabled(),
             ),
         )
@@ -383,7 +395,7 @@ class SubtitleOptimizer:
     def agent_loop(self, subtitle_chunk: Dict[str, str]) -> Dict[str, str]:
         """使用agent loop优化字幕
 
-        LLM → 验证 → 反馈 → 重试 (最多MAX_STEPS次)
+        LLM → 验证 → 反馈 → 重试
 
         Args:
             subtitle_chunk: 字幕批次字典
@@ -413,7 +425,7 @@ class SubtitleOptimizer:
         last_result: Optional[Dict[str, str]] = None
 
         # Agent loop
-        for step in range(MAX_STEPS):
+        for step in range(self.retry_count):
             # 调用LLM
             response = call_llm(
                 messages=messages,
@@ -460,7 +472,7 @@ class SubtitleOptimizer:
             )
 
         # 达到最大步数
-        logger.warning(f"达到最大尝试次数({MAX_STEPS})，返回最后结果")
+        logger.warning(f"达到最大尝试次数({self.retry_count})，返回最后结果")
         return (
             self._repair_subtitle(subtitle_chunk, last_result)
             if last_result
