@@ -1,5 +1,6 @@
 from typing import Optional
 
+from PyQt5.QtCore import QEvent
 from PyQt5.QtWidgets import QSizePolicy, QStackedWidget, QVBoxLayout, QWidget
 from qfluentwidgets import SegmentedWidget
 
@@ -18,6 +19,7 @@ class HomeInterface(QWidget):
 
         # 设置对象名称和样式
         self.setObjectName("HomeInterface")
+        self.setAcceptDrops(True)
         self.setStyleSheet(
             """
             HomeInterface{background: white}
@@ -29,6 +31,8 @@ class HomeInterface(QWidget):
         self.pivot.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
 
         self.stackedWidget = QStackedWidget(self)
+        self.stackedWidget.setAcceptDrops(True)
+        self.stackedWidget.installEventFilter(self)
         self.vBoxLayout = QVBoxLayout(self)
 
         # 添加子界面
@@ -118,6 +122,48 @@ class HomeInterface(QWidget):
         widget = self.stackedWidget.widget(index)
         if widget:
             self.pivot.setCurrentItem(widget.objectName())
+
+    def handle_dropped_files(self, files):
+        if not any(
+            self.task_creation_interface.is_supported_media_file(path) for path in files
+        ):
+            return False
+        self.stackedWidget.setCurrentWidget(self.task_creation_interface)
+        self.pivot.setCurrentItem("TaskCreationInterface")
+        return self.task_creation_interface.handle_dropped_files(files)
+
+    def dragEnterEvent(self, event):
+        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
+
+    def dragMoveEvent(self, event):
+        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            self.handle_dropped_files(
+                [u.toLocalFile() for u in event.mimeData().urls()]
+            )
+        else:
+            event.ignore()
+
+    def eventFilter(self, watched, event):
+        if watched is self.stackedWidget and event.type() in (
+            QEvent.DragEnter,
+            QEvent.DragMove,
+            QEvent.Drop,
+        ):
+            if event.mimeData().hasUrls():
+                event.acceptProposedAction()
+                if event.type() == QEvent.Drop:
+                    self.handle_dropped_files(
+                        [u.toLocalFile() for u in event.mimeData().urls()]
+                    )
+                return True
+            event.ignore()
+            return True
+
+        return super().eventFilter(watched, event)
 
     def closeEvent(self, event):
         # 关闭事件，关闭所有子界面

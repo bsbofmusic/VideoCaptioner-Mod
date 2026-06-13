@@ -3,7 +3,7 @@ import os
 import shutil
 
 import psutil
-from PyQt5.QtCore import QSize, QThread, QUrl
+from PyQt5.QtCore import QEvent, QSize, QThread, QUrl
 from PyQt5.QtGui import QDesktopServices, QIcon
 from PyQt5.QtWidgets import QApplication
 from qfluentwidgets import FluentIcon as FIF
@@ -54,6 +54,7 @@ class MainWindow(FluentWindow):
 
         # 初始化导航界面
         self.initNavigation()
+        self._enable_file_drop()
         self.splashScreen.finish()
 
         # 检查系统依赖
@@ -96,6 +97,55 @@ class MainWindow(FluentWindow):
         else:
             self.setWindowTitle(self.tr("卡卡字幕助手 -- VideoCaptioner"))
         self.stackedWidget.setCurrentWidget(interface, popOut=False)
+
+    def _enable_file_drop(self):
+        self.setAcceptDrops(True)
+        self.stackedWidget.setAcceptDrops(True)
+        self.stackedWidget.installEventFilter(self)
+
+    def _handle_dropped_files(self, files):
+        if not files:
+            return False
+        if not any(
+            self.homeInterface.task_creation_interface.is_supported_media_file(path)
+            for path in files
+        ):
+            return False
+        self.switchTo(self.homeInterface)
+        return self.homeInterface.handle_dropped_files(files)
+
+    def dragEnterEvent(self, event):
+        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
+
+    def dragMoveEvent(self, event):
+        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            self._handle_dropped_files(
+                [u.toLocalFile() for u in event.mimeData().urls()]
+            )
+        else:
+            event.ignore()
+
+    def eventFilter(self, watched, event):
+        if watched is self.stackedWidget and event.type() in (
+            QEvent.DragEnter,
+            QEvent.DragMove,
+            QEvent.Drop,
+        ):
+            if event.mimeData().hasUrls():
+                event.acceptProposedAction()
+                if event.type() == QEvent.Drop:
+                    self._handle_dropped_files(
+                        [u.toLocalFile() for u in event.mimeData().urls()]
+                    )
+                return True
+            event.ignore()
+            return True
+
+        return super().eventFilter(watched, event)
 
     def initWindow(self):
         """初始化窗口"""

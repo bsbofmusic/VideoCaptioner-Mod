@@ -251,7 +251,7 @@ class TaskCreationInterface(QWidget):
     def dropEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            self._handle_dropped_files(
+            self.handle_dropped_files(
                 [u.toLocalFile() for u in event.mimeData().urls()]
             )
         else:
@@ -266,7 +266,7 @@ class TaskCreationInterface(QWidget):
             if event.mimeData().hasUrls():
                 event.acceptProposedAction()
                 if event.type() == QEvent.Drop:
-                    self._handle_dropped_files(
+                    self.handle_dropped_files(
                         [u.toLocalFile() for u in event.mimeData().urls()]
                     )
                 return True
@@ -275,20 +275,9 @@ class TaskCreationInterface(QWidget):
 
         return super().eventFilter(watched, event)
 
-    def _handle_dropped_files(self, files):
+    def handle_dropped_files(self, files):
         for file_path in files:
-            if not os.path.isfile(file_path):
-                continue
-
-            file_ext = os.path.splitext(file_path)[1][1:].lower()
-
-            # 检查文件格式是否支持
-            supported_formats = {fmt.value for fmt in SupportedVideoFormats} | {
-                fmt.value for fmt in SupportedAudioFormats
-            }
-            is_supported = file_ext in supported_formats
-
-            if is_supported:
+            if self.is_supported_media_file(file_path):
                 self.search_input.setText(file_path)
                 self.status_label.setText(self.tr("导入成功"))
                 InfoBar.success(
@@ -297,14 +286,26 @@ class TaskCreationInterface(QWidget):
                     duration=INFOBAR_DURATION_SUCCESS,
                     parent=self,
                 )
-                break
+                return True
             else:
+                file_ext = os.path.splitext(file_path)[1][1:].lower()
                 InfoBar.error(
                     self.tr("格式错误") + file_ext,
                     self.tr("不支持该文件格式"),
                     duration=INFOBAR_DURATION_ERROR,
                     parent=self,
                 )
+        return False
+
+    @staticmethod
+    def is_supported_media_file(file_path):
+        if not os.path.isfile(file_path):
+            return False
+        file_ext = os.path.splitext(file_path)[1][1:].lower()
+        supported_formats = {fmt.value for fmt in SupportedVideoFormats} | {
+            fmt.value for fmt in SupportedAudioFormats
+        }
+        return file_ext in supported_formats
 
     def create_task(self):
         search_input = self.search_input.text()
