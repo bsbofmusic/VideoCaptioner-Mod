@@ -35,15 +35,6 @@ from videocaptioner.config import LLM_LOG_FILE, LOG_PATH
 PAGE_SIZE = 50
 
 
-def _get_usage(log_entry: Dict[str, Any]) -> Dict[str, Any]:
-    """Return token usage dict, compatible with Responses logs where usage can be null."""
-    response = log_entry.get("response", {}) or {}
-    if not isinstance(response, dict):
-        return {}
-    usage = response.get("usage") or {}
-    return usage if isinstance(usage, dict) else {}
-
-
 class LogDetailDialog(MessageBoxBase):
     """日志详情对话框"""
 
@@ -62,7 +53,7 @@ class LogDetailDialog(MessageBoxBase):
         duration = self.log_entry.get("duration_ms", 0) / 1000
         stage = self.log_entry.get("stage", "") or "-"
 
-        usage = _get_usage(self.log_entry)
+        usage = self.log_entry.get("response", {}).get("usage") or {}
         prompt_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))
         completion_tokens = usage.get(
             "completion_tokens", usage.get("output_tokens", 0)
@@ -98,9 +89,7 @@ class LogDetailDialog(MessageBoxBase):
         self.request_edit = PlainTextEdit()
         self.request_edit.setReadOnly(True)
         self.request_edit.setMinimumHeight(180)
-        request_text = json.dumps(
-            self.log_entry.get("request", {}), indent=2, ensure_ascii=False
-        )
+        request_text = json.dumps(self.log_entry.get("request", {}), indent=2, ensure_ascii=False)
         self.request_edit.setPlainText(request_text)
         self.viewLayout.addWidget(self.request_edit)
 
@@ -109,9 +98,7 @@ class LogDetailDialog(MessageBoxBase):
         self.response_edit = PlainTextEdit()
         self.response_edit.setReadOnly(True)
         self.response_edit.setMinimumHeight(180)
-        response_text = json.dumps(
-            self.log_entry.get("response", {}), indent=2, ensure_ascii=False
-        )
+        response_text = json.dumps(self.log_entry.get("response", {}), indent=2, ensure_ascii=False)
         self.response_edit.setPlainText(response_text)
         self.viewLayout.addWidget(self.response_edit)
 
@@ -130,9 +117,7 @@ class LogDetailDialog(MessageBoxBase):
         self.widget.setMinimumWidth(700)
 
     def _copy_request(self):
-        text = json.dumps(
-            self.log_entry.get("request", {}), indent=2, ensure_ascii=False
-        )
+        text = json.dumps(self.log_entry.get("request", {}), indent=2, ensure_ascii=False)
         clipboard = QApplication.clipboard()
         if clipboard:
             clipboard.setText(text)
@@ -145,9 +130,7 @@ class LogDetailDialog(MessageBoxBase):
         )
 
     def _copy_response(self):
-        text = json.dumps(
-            self.log_entry.get("response", {}), indent=2, ensure_ascii=False
-        )
+        text = json.dumps(self.log_entry.get("response", {}), indent=2, ensure_ascii=False)
         clipboard = QApplication.clipboard()
         if clipboard:
             clipboard.setText(text)
@@ -422,7 +405,7 @@ class LLMLogsInterface(QWidget):
             self.table.setItem(row, 5, self._create_item(f"{duration:.1f}s"))
 
             # 总 Tokens
-            usage = _get_usage(log)
+            usage = log.get("response", {}).get("usage") or {}
             total_tokens = usage.get("total_tokens", 0)
             if not total_tokens:
                 total_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))

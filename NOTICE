@@ -1,19 +1,8 @@
-﻿VideoCaptioner-Mod
+VideoCaptioner-Mod
 
-This project is an unofficial modified version of VideoCaptioner.
+VideoCaptioner-Mod is a modified distribution of VideoCaptioner by WEIFENG2333.
+Original upstream project: https://github.com/WEIFENG2333/VideoCaptioner
+Mod repository: https://github.com/bsbofmusic/VideoCaptioner-Mod
 
-Original project:
-https://github.com/WEIFENG2333/VideoCaptioner
-
-Original copyright:
-Copyright (C) 2025 Weifeng
-
-Modifications:
-Copyright (C) 2026 VideoCaptioner-Mod contributors
-
-License:
-GNU General Public License v3.0. See LICENSE.
-
-This modified version is not affiliated with, endorsed by, or maintained by the original author unless explicitly stated by the original author.
-
-Major modifications are documented in CHANGELOG.md and README.md.
+This project is distributed under GPL-3.0. The complete corresponding source code
+for this modified version is available from the Mod repository and GitHub releases.

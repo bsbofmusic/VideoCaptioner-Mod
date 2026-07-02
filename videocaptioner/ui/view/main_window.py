@@ -54,11 +54,14 @@ class MainWindow(FluentWindow):
 
         # 初始化导航界面
         self.initNavigation()
-        self._enable_file_drop()
         self.splashScreen.finish()
 
         # 检查系统依赖
         self._check_ffmpeg()
+
+        self.setAcceptDrops(True)
+        self.stackedWidget.setAcceptDrops(True)
+        self.stackedWidget.installEventFilter(self)
 
         # 注册退出处理， 清理进程
         atexit.register(self.stop)
@@ -98,55 +101,6 @@ class MainWindow(FluentWindow):
             self.setWindowTitle(self.tr("卡卡字幕助手 -- VideoCaptioner"))
         self.stackedWidget.setCurrentWidget(interface, popOut=False)
 
-    def _enable_file_drop(self):
-        self.setAcceptDrops(True)
-        self.stackedWidget.setAcceptDrops(True)
-        self.stackedWidget.installEventFilter(self)
-
-    def _handle_dropped_files(self, files):
-        if not files:
-            return False
-        if not any(
-            self.homeInterface.task_creation_interface.is_supported_media_file(path)
-            for path in files
-        ):
-            return False
-        self.switchTo(self.homeInterface)
-        return self.homeInterface.handle_dropped_files(files)
-
-    def dragEnterEvent(self, event):
-        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
-
-    def dragMoveEvent(self, event):
-        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
-
-    def dropEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-            self._handle_dropped_files(
-                [u.toLocalFile() for u in event.mimeData().urls()]
-            )
-        else:
-            event.ignore()
-
-    def eventFilter(self, watched, event):
-        if watched is self.stackedWidget and event.type() in (
-            QEvent.DragEnter,
-            QEvent.DragMove,
-            QEvent.Drop,
-        ):
-            if event.mimeData().hasUrls():
-                event.acceptProposedAction()
-                if event.type() == QEvent.Drop:
-                    self._handle_dropped_files(
-                        [u.toLocalFile() for u in event.mimeData().urls()]
-                    )
-                return True
-            event.ignore()
-            return True
-
-        return super().eventFilter(watched, event)
-
     def initWindow(self):
         """初始化窗口"""
         self.resize(1050, 800)
@@ -174,7 +128,7 @@ class MainWindow(FluentWindow):
         w = MessageBox(
             self.tr("GitHub信息"),
             self.tr(
-                "VideoCaptioner 由本人在课余时间独立开发完成，目前托管在GitHub上，欢迎Star和Fork。项目诚然还有很多地方需要完善，遇到软件的问题或者BUG欢迎提交Issue。\n\n https://github.com/WEIFENG2333/VideoCaptioner"
+                "VideoCaptioner-Mod 基于 GPL-3.0 许可的 VideoCaptioner 构建，源码托管在 GitHub。遇到软件问题或者 BUG 欢迎提交 Issue。\n\n https://github.com/bsbofmusic/VideoCaptioner-Mod"
             ),
             self,
         )
@@ -226,6 +180,48 @@ class MainWindow(FluentWindow):
         super().resizeEvent(e)
         if hasattr(self, "splashScreen"):
             self.splashScreen.resize(self.size())
+
+    def _handle_dropped_files(self, files):
+        if not files:
+            return False
+        if not any(
+            self.homeInterface.task_creation_interface.is_supported_media_file(path)
+            for path in files
+        ):
+            return False
+
+        self.switchTo(self.homeInterface)
+        return self.homeInterface.handle_dropped_files(files)
+
+    def dragEnterEvent(self, event):
+        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
+
+    def dragMoveEvent(self, event):
+        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            self._handle_dropped_files(
+                [u.toLocalFile() for u in event.mimeData().urls()]
+            )
+        else:
+            event.ignore()
+
+    def eventFilter(self, obj, event):
+        if obj is self.stackedWidget and event.type() in (
+            QEvent.DragEnter,
+            QEvent.DragMove,
+            QEvent.Drop,
+        ):
+            if event.mimeData().hasUrls():
+                event.acceptProposedAction()
+                if event.type() == QEvent.Drop:
+                    self._handle_dropped_files(
+                        [u.toLocalFile() for u in event.mimeData().urls()]
+                    )
+                return True
+        return super().eventFilter(obj, event)
 
     def closeEvent(self, event):
         # 关闭所有子界面

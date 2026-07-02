@@ -40,17 +40,17 @@ class TranscriptThread(QThread):
             self.progress.emit(100, self.tr("转录失败"))
 
     def _friendly_error_message(self, error: Exception) -> str:
-        """Convert known backend errors to user-facing messages without changing behavior."""
+        """Convert known backend errors to user-facing messages."""
         message = str(error)
         if "duration limit exceeded" in message:
             return self.tr(
-                "公共 ASR 接口 12 小时累计转写时长已用尽。"
-                "请等待额度恢复后重试，或切换到 FasterWhisper / BIJIAN 等其他转录模型。"
+                "公益 ASR 服务在 12 小时窗口内的本地时长限额已用尽。"
+                "请稍后重试，或切换到 Whisper API / FasterWhisper。"
             )
         if "call count limit exceeded" in message:
             return self.tr(
-                "公共 ASR 接口 12 小时调用次数已用尽。"
-                "请等待额度恢复后重试，或切换到 FasterWhisper / BIJIAN 等其他转录模型。"
+                "公益 ASR 服务在 12 小时窗口内的本地调用次数限额已用尽。"
+                "请稍后重试，或切换到 Whisper API / FasterWhisper。"
             )
         return message
 

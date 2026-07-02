@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from typing import Any, List, Optional
 from urllib.parse import urlparse, urlunparse
 
-import openai
 import httpx
+import openai
 from openai import OpenAI
 from tenacity import (
     RetryCallState,
@@ -134,9 +134,7 @@ def _call_llm_api(
         **kwargs,
     )
 
-    # 记录响应内容
     log_llm_response(response)
-
     return response
 
 
@@ -202,7 +200,10 @@ def _call_anthropic_messages(
             system_parts.append(content)
         else:
             anthropic_messages.append(
-                {"role": "assistant" if role == "assistant" else "user", "content": content}
+                {
+                    "role": "assistant" if role == "assistant" else "user",
+                    "content": content,
+                }
             )
 
     payload: dict[str, Any] = {
@@ -223,20 +224,25 @@ def _call_anthropic_messages(
     start_time = time.time()
     logger.info("Anthropic request start: model=%s, timeout=%ss", model, request_timeout)
     try:
-        with httpx.Client(timeout=httpx.Timeout(float(request_timeout), connect=10.0)) as client:
+        timeout = httpx.Timeout(float(request_timeout), connect=10.0)
+        with httpx.Client(timeout=timeout) as client:
             response = client.post(f"{base_url}/messages", headers=headers, json=payload)
             if response.status_code >= 400:
                 raise RuntimeError(
                     f"Anthropic API error {response.status_code}: {response.text[:500]}"
                 )
             data = response.json()
-    except httpx.TimeoutException as e:
-        raise RuntimeError(f"Anthropic API timeout after {request_timeout}s") from e
-    except httpx.HTTPError as e:
-        raise RuntimeError(f"Anthropic API connection error: {e}") from e
+    except httpx.TimeoutException as exc:
+        raise RuntimeError(f"Anthropic API timeout after {request_timeout}s") from exc
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"Anthropic API connection error: {exc}") from exc
     finally:
         duration_ms = int((time.time() - start_time) * 1000)
-        logger.info("Anthropic request finished: model=%s, duration_ms=%s", model, duration_ms)
+        logger.info(
+            "Anthropic request finished: model=%s, duration_ms=%s",
+            model,
+            duration_ms,
+        )
 
     return _anthropic_to_chat_response(data)
 

@@ -21,28 +21,6 @@ from .status import ASRStatus
 logger = setup_logger("faster_whisper")
 
 
-def _find_executable(program: str) -> Optional[str]:
-    """Return an executable path/name if program can be launched."""
-    program = (program or "").strip().strip('"')
-    if not program:
-        return None
-
-    resolved = shutil.which(program)
-    if resolved:
-        return resolved
-
-    program_path = Path(program)
-    if program_path.is_file() and os.access(program_path, os.X_OK):
-        return str(program_path)
-
-    return None
-
-
-def _is_faster_whisper_xxl(program: str) -> bool:
-    """Whether the selected binary is faster-whisper-xxl."""
-    return "faster-whisper-xxl" in Path(str(program)).name.lower()
-
-
 class FasterWhisperASR(BaseASR):
     """Faster-Whisper local ASR implementation.
 
@@ -121,97 +99,21 @@ class FasterWhisperASR(BaseASR):
             self.one_word = 0
             self.sentence = True
 
-        self._resolve_program_and_device()
-
-    def _resolve_program_and_device(self) -> None:
-        """Resolve faster-whisper executable and normalize device selection."""
-        configured_program = (self.faster_whisper_program or "").strip()
-        configured_executable = _find_executable(configured_program)
-
-        if configured_program and not configured_executable:
-            logger.warning(
-                "配置的 faster-whisper 程序不可执行或不在 PATH 中，将自动查找: %s",
-                configured_program,
-            )
-
-        xxl_program = shutil.which("faster-whisper-xxl")
-        standard_program = shutil.which("faster-whisper")
-
-        selected_program: Optional[str] = None
-
-        # 优先使用用户显式传入且可执行的程序。
-        if configured_executable:
-            selected_program = configured_executable
-
-        device = (self.device or "auto").lower()
-
-        if device == "auto":
-            if selected_program:
-                # auto 模式下根据选中的程序决定设备，避免把 auto 传给不支持的二进制。
-                self.device = "cuda" if _is_faster_whisper_xxl(selected_program) else "cpu"
-            elif xxl_program:
-                selected_program = xxl_program
-                self.device = "cuda"
-            elif standard_program:
-                selected_program = standard_program
-                self.device = "cpu"
+        # 根据设备选择程序
+        if self.device == "cpu":
+            if shutil.which("faster-whisper-xxl"):
+                self.faster_whisper_program = "faster-whisper-xxl"
             else:
+                if not shutil.which("faster-whisper"):
+                    raise EnvironmentError("faster-whisper program not found，请确保已经下载。")
+                self.faster_whisper_program = "faster-whisper"
+                self.vad_method = ""
+        elif self.device == "cuda":
+            if not shutil.which("faster-whisper-xxl"):
                 raise EnvironmentError(
-                    "未找到可用的 faster-whisper 程序。请将 faster-whisper-xxl 或 "
-                    "faster-whisper 添加到 PATH，或在设置中改用“必剪/剪映”免费云识别，"
-                    "也可以下载并配置 faster-whisper 后重试。"
+                    "faster-whisper-xxl 程序未找到，请确保已经下载。"
                 )
-        elif device == "cpu":
-            self.device = "cpu"
-            if not selected_program:
-                if xxl_program:
-                    selected_program = xxl_program
-                elif standard_program:
-                    selected_program = standard_program
-                else:
-                    raise EnvironmentError(
-                        "未找到可用的 faster-whisper 程序。请将 faster-whisper-xxl 或 "
-                        "faster-whisper 添加到 PATH，或在设置中改用“必剪/剪映”免费云识别，"
-                        "也可以下载并配置 faster-whisper 后重试。"
-                    )
-        elif device == "cuda":
-            self.device = "cuda"
-            if not selected_program:
-                if xxl_program:
-                    selected_program = xxl_program
-                elif standard_program:
-                    selected_program = standard_program
-                else:
-                    raise EnvironmentError(
-                        "未找到可用的 faster-whisper 程序。请将 faster-whisper-xxl 或 "
-                        "faster-whisper 添加到 PATH，或在设置中改用“必剪/剪映”免费云识别，"
-                        "也可以下载并配置 faster-whisper 后重试。"
-                    )
-        else:
-            if not selected_program:
-                if xxl_program:
-                    selected_program = xxl_program
-                elif standard_program:
-                    selected_program = standard_program
-                else:
-                    raise EnvironmentError(
-                        "未找到可用的 faster-whisper 程序。请将 faster-whisper-xxl 或 "
-                        "faster-whisper 添加到 PATH，或在设置中改用“必剪/剪映”免费云识别，"
-                        "也可以下载并配置 faster-whisper 后重试。"
-                    )
-
-        if not selected_program:
-            raise EnvironmentError(
-                "未找到可用的 faster-whisper 程序。请将 faster-whisper-xxl 或 "
-                "faster-whisper 添加到 PATH，或在设置中改用“必剪/剪映”免费云识别，"
-                "也可以下载并配置 faster-whisper 后重试。"
-            )
-
-        self.faster_whisper_program = selected_program
-
-        # 非 xxl 程序不支持 xxl 的 vad_method 参数，保持原有兼容逻辑。
-        if not _is_faster_whisper_xxl(self.faster_whisper_program):
-            self.vad_method = ""
+            self.faster_whisper_program = "faster-whisper-xxl"
 
     def _build_command(self, audio_input: str) -> List[str]:
         """Build command line arguments for faster-whisper."""
@@ -256,7 +158,9 @@ class FasterWhisperASR(BaseASR):
             cmd.extend(["--vad_filter", "false"])
 
         # 人声分离
-        if self.ff_mdx_kim2 and _is_faster_whisper_xxl(self.faster_whisper_program):
+        if self.ff_mdx_kim2 and self.faster_whisper_program.startswith(
+            "faster-whisper-xxl"
+        ):
             cmd.append("--ff_mdx_kim2")
 
         # 文本处理参数
@@ -344,26 +248,18 @@ class FasterWhisperASR(BaseASR):
 
             cmd = self._build_command(str(wav_path))
 
-            logger.info("Faster Whisper command: %s", " ".join(cmd))
+            logger.debug("Faster Whisper command: %s", " ".join(cmd))
             callback(*ASRStatus.TRANSCRIBING.with_progress(5))
 
-            try:
-                self.process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8",
-                    errors="ignore",
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-                )
-            except FileNotFoundError as e:
-                program = cmd[0] if cmd else self.faster_whisper_program
-                raise EnvironmentError(
-                    f"无法启动 faster-whisper 程序：{program or '<空>'}。"
-                    "请确认 faster-whisper-xxl 或 faster-whisper 已下载并添加到 PATH，"
-                    "或在设置中改用“必剪/剪映”免费云识别。"
-                ) from e
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
 
             # 使用 StreamReader 处理输出
             reader = StreamReader(self.process)
@@ -377,17 +273,17 @@ class FasterWhisperASR(BaseASR):
             while True:
                 # 检查进程状态
                 if self.process.poll() is not None:
-                    # 进程已结束，读取剩余输出
+                    # 进程已ended，Reading剩余输出
                     for stream_name, line in reader.get_remaining_output():
                         line = line.strip()
                         if line:
                             if "error" in line:
                                 error_msg += line
                             else:
-                                logger.info(line)
+                                logger.debug(line)
                     break
 
-                # 读取输出
+                # Reading输出
                 output = reader.get_output(timeout=0.1)
                 if output:
                     stream_name, line = output
@@ -410,18 +306,18 @@ class FasterWhisperASR(BaseASR):
                             error_msg += line
                             logger.error(line)
                         else:
-                            logger.info(line)
+                            logger.debug(line)
 
             if not is_finish:
-                logger.error("Faster Whisper 错误: %s", error_msg)
+                logger.error("Faster Whisper Error: %s", error_msg)
                 raise RuntimeError(error_msg)
 
             # 判断是否识别成功
             if not output_path.exists():
-                logger.info("Faster Whisper 返回值: %s", self.process.returncode)
+                logger.debug("Faster Whisper 返回值: %s", self.process.returncode)
                 raise RuntimeError(f"Faster Whisper 输出文件不存在: {output_path}")
 
-            logger.info("Faster Whisper ASR completed")
+            logger.debug("Faster Whisper ASR completed")
 
             callback(*ASRStatus.COMPLETED.callback_tuple())
 
@@ -445,7 +341,7 @@ def is_rtx_50_series() -> bool:
             gpu_name = gpu.name.lower()
             # 检测是否包含 50 系列标识，如 RTX 5090, RTX 5080 等
             if re.search(r"rtx\s*50\d{2}", gpu_name):
-                logger.info(f"检测到 RTX 50 系显卡: {gpu.name}")
+                logger.debug(f"Detected RTX 50 系显卡: {gpu.name}")
                 return True
     except Exception as e:
         logger.debug(f"无法检测 GPU 型号: {e}")

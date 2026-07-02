@@ -9,6 +9,7 @@ Config priority (highest to lowest):
 
 import os
 import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -28,18 +29,37 @@ APP_NAME = "videocaptioner"
 CONFIG_DIR = Path(user_config_dir(APP_NAME))
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 
-# Environment variable prefix
-ENV_PREFIX = "VIDEOCAPTIONER_"
-
-# Flat env var → nested TOML key mapping
+# Environment variable mappings: env var name → config dotted key
+# Supports both OpenAI standard names and VIDEOCAPTIONER_ prefixed names
 ENV_MAP: Dict[str, str] = {
-    "LLM_API_KEY": "llm.api_key",
-    "LLM_API_BASE": "llm.api_base",
-    "LLM_MODEL": "llm.model",
-    "WHISPER_API_KEY": "whisper_api.api_key",
-    "WHISPER_API_BASE": "whisper_api.api_base",
-    "DEEPLX_ENDPOINT": "translate.deeplx_endpoint",
-    "TARGET_LANG": "translate.target_language",
+    # OpenAI standard (most tools recognize these)
+    "OPENAI_API_KEY": "llm.api_key",
+    "OPENAI_BASE_URL": "llm.api_base",
+    "OPENAI_MODEL": "llm.model",
+    # VIDEOCAPTIONER_ prefixed (take precedence over standard)
+    "VIDEOCAPTIONER_LLM_API_KEY": "llm.api_key",
+    "VIDEOCAPTIONER_LLM_API_BASE": "llm.api_base",
+    "VIDEOCAPTIONER_LLM_MODEL": "llm.model",
+    "VIDEOCAPTIONER_LLM_PROVIDER": "llm.provider",
+    "VIDEOCAPTIONER_WHISPER_API_KEY": "whisper_api.api_key",
+    "VIDEOCAPTIONER_WHISPER_API_BASE": "whisper_api.api_base",
+    "VIDEOCAPTIONER_DEEPLX_ENDPOINT": "translate.deeplx_endpoint",
+    "VIDEOCAPTIONER_TARGET_LANG": "translate.target_language",
+    "VIDEOCAPTIONER_DUBBING_PROVIDER": "dubbing.provider",
+    "VIDEOCAPTIONER_DUB_PRESET": "dubbing.preset",
+    "VIDEOCAPTIONER_TTS_API_KEY": "dubbing.api_key",
+    "VIDEOCAPTIONER_TTS_API_BASE": "dubbing.api_base",
+    "VIDEOCAPTIONER_TTS_MODEL": "dubbing.model",
+    "VIDEOCAPTIONER_TTS_VOICE": "dubbing.voice",
+    "VIDEOCAPTIONER_TTS_STYLE_PROMPT": "dubbing.style_prompt",
+    "VIDEOCAPTIONER_TTS_WORKERS": "dubbing.tts_workers",
+    "VIDEOCAPTIONER_TTS_USE_CACHE": "dubbing.use_cache",
+    "VIDEOCAPTIONER_TTS_FIT_MODE": "dubbing.fit_mode",
+    "VIDEOCAPTIONER_DUB_TIMING": "dubbing.timing",
+    "VIDEOCAPTIONER_DUB_AUDIO_MODE": "dubbing.audio_mode",
+    "VIDEOCAPTIONER_TTS_MAX_SPEED": "dubbing.max_speed",
+    "VIDEOCAPTIONER_TTS_REWRITE_TOO_LONG": "dubbing.rewrite_too_long",
+    "VIDEOCAPTIONER_TTS_MIX_ORIGINAL_AUDIO": "dubbing.mix_original_audio",
 }
 
 DEFAULTS: Dict[str, Any] = {
@@ -47,6 +67,7 @@ DEFAULTS: Dict[str, Any] = {
         "api_key": "",
         "api_base": "https://api.openai.com/v1",
         "model": "gpt-4o-mini",
+        "provider": "",
     },
     "whisper_api": {
         "api_key": "",
@@ -55,7 +76,7 @@ DEFAULTS: Dict[str, Any] = {
         "prompt": "",
     },
     "transcribe": {
-        "asr": "faster-whisper",
+        "asr": "bijian",
         "language": "auto",
         "faster_whisper": {
             "model": "large-v3",
@@ -77,11 +98,11 @@ DEFAULTS: Dict[str, Any] = {
         "max_word_count_cjk": 18,
         "max_word_count_english": 12,
         "thread_num": 4,
-        "batch_size": 10,
+        "batch_size": 20,
         "retry_count": 3,
     },
     "translate": {
-        "service": "llm",
+        "service": "bing",
         "target_language": "zh-Hans",
         "reflect": False,
         "deeplx_endpoint": "",
@@ -90,7 +111,33 @@ DEFAULTS: Dict[str, Any] = {
         "subtitle_mode": "soft",
         "quality": "medium",
         "layout": "target-above",
+        "render_mode": "ass",
         "style": "default",
+    },
+    "dubbing": {
+        "provider": "edge",
+        "preset": "edge-cn-female",
+        "api_key": "",
+        "api_base": "",
+        "model": "edge-tts",
+        "voice": "zh-CN-XiaoxiaoNeural",
+        "response_format": "mp3",
+        "sample_rate": 32000,
+        "speed": 1.0,
+        "gain": 0,
+        "tts_workers": 5,
+        "use_cache": True,
+        "style_prompt": "",
+        "timing": "balanced",
+        "audio_mode": "replace",
+        "fit_mode": "tempo",
+        "max_speed": 2.0,
+        "target_padding_ms": 80,
+        "rewrite_too_long": False,
+        "rewrite_threshold": 1.15,
+        "mix_original_audio": False,
+        "original_audio_volume": 0.25,
+        "dubbed_audio_volume": 1.0,
     },
     "output": {
         "format": "srt",
@@ -145,13 +192,21 @@ def load_config_file(path: Optional[Path] = None) -> dict:
 
 
 def load_env_overrides() -> dict:
-    """Read VIDEOCAPTIONER_* environment variables and map them to config keys."""
+    """Read environment variables and map them to config keys.
+
+    Supports both OpenAI standard names (OPENAI_API_KEY) and
+    VIDEOCAPTIONER_ prefixed names. Prefixed names take precedence.
+    """
     overrides: Dict[str, Any] = {}
-    for env_suffix, dotted_key in ENV_MAP.items():
-        env_var = ENV_PREFIX + env_suffix
+    for env_var, dotted_key in ENV_MAP.items():
         value = os.environ.get(env_var)
         if value is not None:
-            _set_nested(overrides, dotted_key, value)
+            try:
+                parsed_value = _parse_value(value, dotted_key)
+            except ValueError as exc:
+                print(f"! Warning: Invalid environment value {env_var}: {exc}", file=sys.stderr)
+                continue
+            _set_nested(overrides, dotted_key, parsed_value)
     return overrides
 
 
@@ -160,7 +215,7 @@ def build_config(
     config_path: Optional[Path] = None,
 ) -> dict:
     """Build final config by merging all sources (priority: cli > env > file > defaults)."""
-    config = DEFAULTS.copy()
+    config = deepcopy(DEFAULTS)
     # Layer 1: config file
     file_config = load_config_file(config_path)
     config = _deep_merge(config, file_config)

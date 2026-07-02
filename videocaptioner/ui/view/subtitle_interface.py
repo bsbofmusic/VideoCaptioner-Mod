@@ -684,19 +684,7 @@ class SubtitleInterface(QWidget):
     def show_video_player(self) -> None:
         """显示视频播放器窗口"""
         # 创建视频播放器窗口（延迟导入，因为vlc是可选依赖）
-        try:
-            from videocaptioner.ui.components.MyVideoWidget import MyVideoWidget
-        except Exception as e:
-            InfoBar.warning(
-                title=self.tr("视频预览不可用"),
-                content=self.tr("未安装 VLC 运行库，字幕处理和视频合成功能不受影响。") + f"\n{e}",
-                orient=Qt.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.TOP,
-                duration=INFOBAR_DURATION_WARNING,
-                parent=self,
-            )
-            return
+        from videocaptioner.ui.components.MyVideoWidget import MyVideoWidget
 
         self.video_player = MyVideoWidget()
         self.video_player.resize(800, 600)

@@ -101,42 +101,6 @@ class SettingInterface(ScrollArea):
             cfg.need_optimize,
             self.translateGroup,
         )
-        self.optimizeThreadNumCard = RangeSettingCard(
-            cfg.optimize_thread_num,
-            FIF.SPEED_HIGH,
-            self.tr("校对并发数量"),
-            self.tr(
-                "同时处理字幕校对批次的数量，数值越大速度越快，但可能触发服务商限流或超时"
-            ),
-            parent=self.translateGroup,
-        )
-        self.optimizeBatchSizeCard = RangeSettingCard(
-            cfg.optimize_batch_size,
-            FIF.ALIGNMENT,
-            self.tr("校对批次大小"),
-            self.tr(
-                "每个校对批次包含的字幕行数，数值越大请求次数越少，越小越稳定且便于排查问题"
-            ),
-            parent=self.translateGroup,
-        )
-        self.optimizeTimeoutSecondsCard = RangeSettingCard(
-            cfg.optimize_timeout_seconds,
-            FIF.HISTORY,
-            self.tr("校对超时时间"),
-            self.tr(
-                "控制每个字幕校对 LLM 请求/批次等待的秒数；推理较慢的模型可适当调高以提升校正质量，但卡住的请求也会等待更久"
-            ),
-            parent=self.translateGroup,
-        )
-        self.optimizeRetryCountCard = RangeSettingCard(
-            cfg.optimize_retry_count,
-            FIF.SPEED_HIGH,
-            self.tr("校对重试次数"),
-            self.tr(
-                "每个字幕校对批次最多尝试的次数，数值越大越容易通过反馈循环修正结果，但请求次数和耗时也会增加"
-            ),
-            parent=self.translateGroup,
-        )
         self.subtitleTranslateCard = SwitchSettingCard(
             FIF.LANGUAGE,
             self.tr("字幕翻译"),
@@ -150,6 +114,34 @@ class SettingInterface(ScrollArea):
             self.tr("目标语言"),
             self.tr("选择翻译字幕的目标语言"),
             texts=[lang.value for lang in cfg.target_language.validator.options],  # type: ignore
+            parent=self.translateGroup,
+        )
+        self.optimizeThreadNumCard = RangeSettingCard(
+            cfg.optimize_thread_num,
+            FIF.SPEED_HIGH,
+            self.tr("校对并发数"),
+            self.tr("字幕校对请求的并行数量"),
+            parent=self.translateGroup,
+        )
+        self.optimizeBatchSizeCard = RangeSettingCard(
+            cfg.optimize_batch_size,
+            FIF.ALIGNMENT,
+            self.tr("校对批次大小"),
+            self.tr("每批提交给大模型校对的字幕数量"),
+            parent=self.translateGroup,
+        )
+        self.optimizeTimeoutCard = RangeSettingCard(
+            cfg.optimize_timeout_seconds,
+            FIF.STOP_WATCH,
+            self.tr("校对超时秒数"),
+            self.tr("单次校对请求允许等待的最长时间"),
+            parent=self.translateGroup,
+        )
+        self.optimizeRetryCard = RangeSettingCard(
+            cfg.optimize_retry_count,
+            FIF.SYNC,
+            self.tr("校对重试次数"),
+            self.tr("校对验证失败后允许重新请求的次数"),
             parent=self.translateGroup,
         )
 
@@ -275,8 +267,8 @@ class SettingInterface(ScrollArea):
         self.translateGroup.addSettingCard(self.subtitleCorrectCard)
         self.translateGroup.addSettingCard(self.optimizeThreadNumCard)
         self.translateGroup.addSettingCard(self.optimizeBatchSizeCard)
-        self.translateGroup.addSettingCard(self.optimizeTimeoutSecondsCard)
-        self.translateGroup.addSettingCard(self.optimizeRetryCountCard)
+        self.translateGroup.addSettingCard(self.optimizeTimeoutCard)
+        self.translateGroup.addSettingCard(self.optimizeRetryCard)
         self.translateGroup.addSettingCard(self.subtitleTranslateCard)
         self.translateGroup.addSettingCard(self.targetLanguageCard)
 
@@ -345,13 +337,7 @@ class SettingInterface(ScrollArea):
                 "api_base_cfg": cfg.codex_api_base,
                 "model_cfg": cfg.codex_model,
                 "default_base": "https://api.openai.com/v1",
-                "default_models": [
-                    "gpt-5.3-codex",
-                    "gpt-5.3-codex-spark",
-                    "gpt-5.4",
-                    "gpt-5.4-mini",
-                    "gpt-5.5",
-                ],
+                "default_models": ["gpt-5.3-codex", "gpt-5.2-codex"],
             },
             LLMServiceEnum.ANTHROPIC: {
                 "prefix": "anthropic",
@@ -359,7 +345,7 @@ class SettingInterface(ScrollArea):
                 "api_base_cfg": cfg.anthropic_api_base,
                 "model_cfg": cfg.anthropic_model,
                 "default_base": "https://api.minimaxi.com/anthropic/v1",
-                "default_models": ["MiniMax-M2.7"],
+                "default_models": ["MiniMax-M2.7", "claude-sonnet-4-5-20250929"],
             },
             LLMServiceEnum.SILICON_CLOUD: {
                 "prefix": "silicon_cloud",
@@ -638,8 +624,7 @@ class SettingInterface(ScrollArea):
             self.translatorServiceCard.comboBox.currentText()
         )
 
-        # 初始化字幕校正相关配置卡片状态
-        self.__onSubtitleOptimizationChanged(cfg.need_optimize.value)
+        self.__onSubtitleOptimizeChanged(cfg.need_optimize.value)
 
         self.setStyleSheet(
             """
@@ -747,9 +732,7 @@ class SettingInterface(ScrollArea):
         self.subtitleCorrectCard.checkedChanged.connect(
             signalBus.subtitle_optimization_changed
         )
-        self.subtitleCorrectCard.checkedChanged.connect(
-            self.__onSubtitleOptimizationChanged
-        )
+        self.subtitleCorrectCard.checkedChanged.connect(self.__onSubtitleOptimizeChanged)
         self.subtitleTranslateCard.checkedChanged.connect(
             signalBus.subtitle_translation_changed
         )
@@ -932,19 +915,6 @@ class SettingInterface(ScrollArea):
         self.llmGroup.adjustSize()
         self.expandLayout.update()
 
-    def __onSubtitleOptimizationChanged(self, is_enabled: bool):
-        """处理字幕校正开关变化，禁用仅在校正时生效的参数。"""
-        for card in (
-            self.optimizeThreadNumCard,
-            self.optimizeBatchSizeCard,
-            self.optimizeTimeoutSecondsCard,
-            self.optimizeRetryCountCard,
-        ):
-            card.setEnabled(is_enabled)
-
-        self.translateGroup.adjustSize()
-        self.expandLayout.update()
-
     def __onTranslatorServiceChanged(self, service):
         openai_cards = [
             self.needReflectTranslateCard,
@@ -966,6 +936,17 @@ class SettingInterface(ScrollArea):
 
         # 更新布局
         self.translate_serviceGroup.adjustSize()
+        self.expandLayout.update()
+
+    def __onSubtitleOptimizeChanged(self, enabled: bool):
+        for card in [
+            self.optimizeThreadNumCard,
+            self.optimizeBatchSizeCard,
+            self.optimizeTimeoutCard,
+            self.optimizeRetryCard,
+        ]:
+            card.setEnabled(enabled)
+        self.translateGroup.adjustSize()
         self.expandLayout.update()
 
     def __onTranscribeModelChanged(self, model_name):
@@ -1104,7 +1085,7 @@ class LLMConnectionThread(QThread):
     finished = pyqtSignal(bool, str, list)
     error = pyqtSignal(str)
 
-    def __init__(self, api_base, api_key, model, llm_service=None):
+    def __init__(self, api_base, api_key, model, llm_service):
         super().__init__()
         self.api_base = api_base
         self.api_key = api_key

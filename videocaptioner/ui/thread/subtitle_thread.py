@@ -1,6 +1,4 @@
 import os
-import threading
-import time
 from pathlib import Path
 from typing import List
 
@@ -8,6 +6,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.entities import (
+    LLMServiceEnum,
     SubtitleConfig,
     SubtitleLayoutEnum,
     SubtitleProcessData,
@@ -21,17 +20,11 @@ from videocaptioner.core.llm.context import (
     set_task_context,
     update_stage,
 )
-from videocaptioner.core.optimize.optimize import (
-    OPTIMIZE_DEFAULT_RETRY_COUNT,
-    OPTIMIZE_RETRY_MAX,
-    OPTIMIZE_RETRY_MIN,
-    SubtitleOptimizer,
-)
+from videocaptioner.core.optimize.optimize import SubtitleOptimizer
 from videocaptioner.core.split.split import SubtitleSplitter
 from videocaptioner.core.translate.factory import TranslatorFactory
 from videocaptioner.core.translate.types import TranslatorType
 from videocaptioner.core.utils.logger import setup_logger
-from videocaptioner.core.utils.path_utils import safe_stem
 
 SERVICE_TO_TYPE = {
     TranslatorServiceEnum.OPENAI: TranslatorType.OPENAI,
@@ -41,7 +34,6 @@ SERVICE_TO_TYPE = {
 }
 
 logger = setup_logger("subtitle_optimization_thread")
-SUBTITLE_STALL_TIMEOUT_SECONDS = 3 * 60
 
 
 def create_translator_from_config(
@@ -83,13 +75,6 @@ class SubtitleThread(QThread):
         self.finished_subtitle_length = 0
         self.custom_prompt_text = ""
         self.optimizer = None
-        self.splitter = None
-        self.translator = None
-        self._watchdog_timer = None
-        self._watchdog_timeout_seconds = SUBTITLE_STALL_TIMEOUT_SECONDS
-        self._last_progress_time = time.time()
-        self._last_progress_message = ""
-        self._watchdog_triggered = False
 
     def set_custom_prompt_text(self, text: str):
         self.custom_prompt_text = text
@@ -100,9 +85,6 @@ class SubtitleThread(QThread):
         if not config:
             raise Exception(self.tr("LLM API 未配置, 请检查LLM配置"))
         if config.base_url and config.api_key and config.llm_model:
-            os.environ["OPENAI_BASE_URL"] = config.base_url
-            os.environ["OPENAI_API_KEY"] = config.api_key
-            os.environ["LLM_PROVIDER"] = config.llm_service.name if config.llm_service else ""
             success, message = check_llm_connection(
                 config.base_url,
                 config.api_key,
@@ -111,12 +93,17 @@ class SubtitleThread(QThread):
             )
             if not success:
                 raise Exception(f"{self.tr('LLM API 测试失败: ')}{message or ''}")
+            os.environ["OPENAI_BASE_URL"] = config.base_url
+            os.environ["OPENAI_API_KEY"] = config.api_key
+            if config.llm_service in (LLMServiceEnum.CODEX, LLMServiceEnum.ANTHROPIC):
+                os.environ["LLM_PROVIDER"] = config.llm_service.name
+            else:
+                os.environ.pop("LLM_PROVIDER", None)
             return config
         else:
             raise Exception(self.tr("LLM API 未配置, 请检查LLM配置"))
 
     def run(self):
-        self._reset_watchdog("任务启动")
         # 设置任务上下文
         task_file = (
             Path(self.task.video_path) if self.task.video_path else Path(self.task.subtitle_path)
@@ -152,17 +139,15 @@ class SubtitleThread(QThread):
             # 2. 重新断句（对于字词级字幕）
             if asr_data.is_word_timestamp():
                 update_stage("split")
-                self._reset_watchdog("字幕断句", SUBTITLE_STALL_TIMEOUT_SECONDS)
                 self.progress.emit(5, self.tr("字幕断句..."))
                 logger.info("正在字幕断句...")
-                self.splitter = SubtitleSplitter(
+                splitter = SubtitleSplitter(
                     thread_num=subtitle_config.thread_num,
                     model=subtitle_config.llm_model,
                     max_word_count_cjk=subtitle_config.max_word_count_cjk,
                     max_word_count_english=subtitle_config.max_word_count_english,
                 )
-                asr_data = self.splitter.split_subtitle(asr_data)
-                self.splitter = None
+                asr_data = splitter.split_subtitle(asr_data)
                 self.update_all.emit(asr_data.to_json())
 
             # 3. 优化字幕
@@ -172,16 +157,12 @@ class SubtitleThread(QThread):
 
             if subtitle_config.need_optimize:
                 update_stage("optimize")
-                self._reset_watchdog(
-                    "优化字幕",
-                    self._optimize_watchdog_timeout(subtitle_config),
-                )
                 self.progress.emit(0, self.tr("优化字幕..."))
                 logger.info("正在优化字幕...")
                 self.finished_subtitle_length = 0
                 if not subtitle_config.llm_model:
                     raise Exception(self.tr("LLM 模型未配置"))
-                self.optimizer = SubtitleOptimizer(
+                optimizer = SubtitleOptimizer(
                     thread_num=subtitle_config.optimize_thread_num,
                     batch_num=subtitle_config.optimize_batch_size,
                     model=subtitle_config.llm_model,
@@ -190,16 +171,14 @@ class SubtitleThread(QThread):
                     retry_count=subtitle_config.optimize_retry_count,
                     update_callback=self.callback,
                 )
-                asr_data = self.optimizer.optimize_subtitle(asr_data)
-                self.optimizer.stop()
-                self.optimizer = None
+                self.optimizer = optimizer
+                asr_data = optimizer.optimize_subtitle(asr_data)
                 asr_data.remove_punctuation()
                 self.update_all.emit(asr_data.to_json())
 
             # 4. 翻译字幕
             if subtitle_config.need_translate:
                 update_stage("translate")
-                self._reset_watchdog("翻译字幕", SUBTITLE_STALL_TIMEOUT_SECONDS)
                 self.progress.emit(0, self.tr("翻译字幕..."))
                 logger.info("正在翻译字幕...")
                 self.finished_subtitle_length = 0
@@ -207,12 +186,11 @@ class SubtitleThread(QThread):
                 if not subtitle_config.target_language:
                     raise Exception(self.tr("目标语言未配置"))
 
-                self.translator = create_translator_from_config(
+                translator = create_translator_from_config(
                     subtitle_config, custom_prompt, self.callback
                 )
 
-                asr_data = self.translator.translate_subtitle(asr_data)
-                self.translator = None
+                asr_data = translator.translate_subtitle(asr_data)
 
                 # 移除末尾标点符号
                 asr_data.remove_punctuation()
@@ -223,7 +201,7 @@ class SubtitleThread(QThread):
                     for layout in SubtitleLayoutEnum:
                         save_path = str(
                             Path(self.task.subtitle_path).parent
-                            / f"{safe_stem(self.task.video_path)}-{layout.value}.srt"
+                            / f"{Path(self.task.video_path).stem}-{layout.value}.srt"
                         )
                         asr_data.save(
                             save_path=save_path,
@@ -244,14 +222,14 @@ class SubtitleThread(QThread):
             if self.task.need_next_task and self.task.video_path:
                 # 保存srt/ass文件到视频目录（对于全流程任务）
                 save_srt_path = (
-                    Path(self.task.video_path).parent / f"{safe_stem(self.task.video_path)}.srt"
+                    Path(self.task.video_path).parent / f"{Path(self.task.video_path).stem}.srt"
                 )
                 asr_data.to_srt(
                     save_path=str(save_srt_path),
                     layout=subtitle_config.subtitle_layout,
                 )
                 save_ass_path = (
-                    Path(self.task.video_path).parent / f"{safe_stem(self.task.video_path)}.ass"
+                    Path(self.task.video_path).parent / f"{Path(self.task.video_path).stem}.ass"
                 )
                 asr_data.to_ass(
                     save_path=str(save_ass_path),
@@ -264,14 +242,10 @@ class SubtitleThread(QThread):
             self.finished.emit(self.task.video_path, self.task.output_path)
 
         except Exception as e:
-            if self._watchdog_triggered:
-                return
             logger.exception(f"字幕处理失败: {str(e)}")
             self.error.emit(str(e))
             self.progress.emit(100, self.tr("字幕处理失败"))
         finally:
-            self._stop_workers()
-            self._cancel_watchdog()
             clear_task_context()
 
     def need_llm(self, subtitle_config: SubtitleConfig, asr_data: ASRData):
@@ -290,7 +264,6 @@ class SubtitleThread(QThread):
         )
 
     def callback(self, result: List[SubtitleProcessData]):
-        self._reset_watchdog("字幕批次完成")
         self.finished_subtitle_length += len(result)
         # 简单计算当前进度（0-100%）
         progress = min(int((self.finished_subtitle_length / max(self.subtitle_length, 1)) * 100), 100)
@@ -305,11 +278,17 @@ class SubtitleThread(QThread):
     def stop(self):
         """停止所有处理"""
         try:
-            self.requestInterruption()
-            self._stop_workers()
+            # 先停止优化器
+            if hasattr(self, "optimizer") and self.optimizer:
+                try:
+                    self.optimizer.stop()  # type: ignore
+                except Exception as e:
+                    logger.error(f"停止优化器时出错：{str(e)}")
 
-            # 等待最多3秒，避免使用 QThread.terminate() 造成 Python/Qt 锁死
-            if self.isRunning() and not self.wait(3000):
+            # 终止线程
+            self.terminate()
+            # 等待最多3秒
+            if not self.wait(3000):
                 logger.warning("线程未能在3秒内正常停止")
 
             # 发送进度信号
@@ -318,66 +297,6 @@ class SubtitleThread(QThread):
         except Exception as e:
             logger.error(f"停止线程时出错：{str(e)}")
             self.progress.emit(100, self.tr("终止时发生错误"))
-
-    @staticmethod
-    def _optimize_watchdog_timeout(subtitle_config: SubtitleConfig) -> int:
-        """Return a stage watchdog long enough for configured proofreading retries."""
-        timeout_seconds = max(1, int(subtitle_config.optimize_timeout_seconds or 90))
-        retry_count = min(
-            OPTIMIZE_RETRY_MAX,
-            max(
-                OPTIMIZE_RETRY_MIN,
-                int(subtitle_config.optimize_retry_count or OPTIMIZE_DEFAULT_RETRY_COUNT),
-            ),
-        )
-        return max(SUBTITLE_STALL_TIMEOUT_SECONDS, timeout_seconds * retry_count + 30)
-
-    def _reset_watchdog(self, message: str, timeout_seconds: int | None = None):
-        self._last_progress_time = time.time()
-        self._last_progress_message = message
-        if timeout_seconds is not None:
-            self._watchdog_timeout_seconds = max(1, int(timeout_seconds))
-        self._cancel_watchdog()
-        self._watchdog_timer = threading.Timer(
-            self._watchdog_timeout_seconds, self._on_watchdog_timeout
-        )
-        self._watchdog_timer.daemon = True
-        self._watchdog_timer.start()
-
-    def _cancel_watchdog(self):
-        if self._watchdog_timer:
-            self._watchdog_timer.cancel()
-            self._watchdog_timer = None
-
-    def _on_watchdog_timeout(self):
-        if not self.isRunning():
-            return
-        self._watchdog_triggered = True
-        message = (
-            f"字幕处理超过 {self._watchdog_timeout_seconds} 秒无进度，已判定卡死。"
-            f"最后状态：{self._last_progress_message or '未知'}"
-        )
-        logger.error(message)
-        self.requestInterruption()
-        self._stop_workers()
-        self.error.emit(message)
-        self.progress.emit(100, self.tr("字幕处理卡死"))
-
-    def _stop_workers(self):
-        for attr_name, label in (
-            ("optimizer", "优化器"),
-            ("splitter", "断句器"),
-            ("translator", "翻译器"),
-        ):
-            worker = getattr(self, attr_name, None)
-            if not worker:
-                continue
-            try:
-                worker.stop()  # type: ignore[attr-defined]
-            except Exception as e:
-                logger.error(f"停止{label}时出错：{str(e)}")
-            finally:
-                setattr(self, attr_name, None)
 
 
 class RetranslateThread(QThread):
@@ -422,7 +341,10 @@ class RetranslateThread(QThread):
                     raise Exception("LLM API 未配置，请检查 LLM 配置")
                 os.environ["OPENAI_BASE_URL"] = config.base_url
                 os.environ["OPENAI_API_KEY"] = config.api_key
-                os.environ["LLM_PROVIDER"] = config.llm_service.name if config.llm_service else ""
+                if config.llm_service in (LLMServiceEnum.CODEX, LLMServiceEnum.ANTHROPIC):
+                    os.environ["LLM_PROVIDER"] = config.llm_service.name
+                else:
+                    os.environ.pop("LLM_PROVIDER", None)
 
             # 构建仅含选中行的 ASRData
             asr_data = ASRData.from_json(self.selected_data)

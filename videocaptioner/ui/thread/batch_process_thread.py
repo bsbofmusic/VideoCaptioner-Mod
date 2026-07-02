@@ -20,9 +20,6 @@ from videocaptioner.ui.thread.video_synthesis_thread import VideoSynthesisThread
 
 logger = setup_logger("batch_process_thread")
 
-MAX_NON_LLM_RETRIES = 5
-TASK_STALL_TIMEOUT_SECONDS = 2 * 60
-
 
 class BatchPreflightError(RuntimeError):
     """Non-retryable error raised before a batch worker thread starts."""
@@ -36,9 +33,6 @@ class BatchTask:
         self.progress = 0
         self.error_message = ""
         self.current_thread: Optional[QThread] = None
-        self.retry_count = 0
-        self.last_progress_at = time.time()
-        self.last_status_message = ""
 
 
 class BatchProcessThread(QThread):
@@ -65,7 +59,6 @@ class BatchProcessThread(QThread):
 
     def run(self):
         while self.is_running:
-            self._check_stalled_tasks()
             # 检查是否有正在运行的任务数量是否达到上限
             running_tasks = sum(
                 1
@@ -86,8 +79,6 @@ class BatchProcessThread(QThread):
     def _process_task(self, batch_task: BatchTask):
         try:
             batch_task.status = BatchTaskStatus.RUNNING
-            batch_task.last_progress_at = time.time()
-            batch_task.last_status_message = "任务启动"
             self.task_progress.emit(
                 batch_task.file_path, 0, str(BatchTaskStatus.RUNNING)
             )
@@ -103,7 +94,9 @@ class BatchProcessThread(QThread):
 
         except Exception as e:
             logger.exception(f"处理任务失败: {str(e)}")
-            self._handle_task_failure(batch_task, str(e))
+            batch_task.status = BatchTaskStatus.FAILED
+            batch_task.error_message = str(e)
+            self.task_error.emit(batch_task.file_path, str(e))
 
     def _emit_preflight_progress(
         self, batch_task: BatchTask, message: str, progress: Optional[int] = None
@@ -111,22 +104,12 @@ class BatchProcessThread(QThread):
         if progress is None:
             progress = batch_task.progress
         batch_task.progress = progress
-        batch_task.last_progress_at = time.time()
-        batch_task.last_status_message = message
         self.task_progress.emit(batch_task.file_path, progress, message)
 
     def _preflight_concrete_task(
         self, batch_task: BatchTask, concrete_task: Any, stage_name: str
     ):
-        """Fail fast and repair deterministic path issues before starting workers.
-
-        This is intentionally local to batch mode. The normal worker threads still
-        keep their own validation, but batch preflight prevents unattended jobs from
-        wasting retries or getting stuck on fixable path issues such as stems ending
-        with spaces before the extension.
-        """
-        self._emit_preflight_progress(batch_task, f"预检{stage_name}任务...")
-        repairs = []
+        self._emit_preflight_progress(batch_task, f"检查{stage_name}路径...", 0)
 
         for attr_name, label in (
             ("file_path", "输入文件"),
@@ -139,7 +122,6 @@ class BatchProcessThread(QThread):
             repaired = self._repair_missing_input_path(value)
             if repaired != value:
                 setattr(concrete_task, attr_name, repaired)
-                repairs.append(f"{label}路径")
             self._assert_input_file(repaired, label)
 
         output_path = getattr(concrete_task, "output_path", None)
@@ -147,19 +129,13 @@ class BatchProcessThread(QThread):
             repaired_output_path = self._sanitize_output_path(output_path)
             if Path(repaired_output_path) != Path(output_path):
                 setattr(concrete_task, "output_path", repaired_output_path)
-                repairs.append("输出路径")
             self._ensure_output_parent_writable(repaired_output_path)
 
-        if repairs:
-            message = f"预检完成，已自动修复：{', '.join(repairs)}"
-        else:
-            message = "预检完成"
-        logger.info("%s - %s", batch_task.file_path, message)
-        self._emit_preflight_progress(batch_task, message)
+        logger.info("%s - preflight ok for %s", batch_task.file_path, stage_name)
+        self._emit_preflight_progress(batch_task, "路径检查通过")
 
     @staticmethod
     def _repair_missing_input_path(path_text: str) -> str:
-        """Try a safe-name sibling if the queued path no longer exists."""
         path = Path(path_text)
         if path.exists():
             return path_text
@@ -174,16 +150,16 @@ class BatchProcessThread(QThread):
     def _assert_input_file(path_text: str, label: str):
         path = Path(path_text)
         if not path.exists():
-            raise BatchPreflightError(f"预检失败：{label}不存在：{path}")
+            raise BatchPreflightError(f"{label}不存在: {path}")
         if not path.is_file():
-            raise BatchPreflightError(f"预检失败：{label}不是文件：{path}")
+            raise BatchPreflightError(f"{label}不是文件: {path}")
 
     @staticmethod
     def _sanitize_output_path(path_text: str) -> str:
         path = Path(path_text)
         parts = path.parts
         if not parts:
-            raise BatchPreflightError("预检失败：输出路径为空")
+            raise BatchPreflightError("输出路径为空")
 
         if path.is_absolute():
             repaired = Path(parts[0])
@@ -194,26 +170,24 @@ class BatchProcessThread(QThread):
 
         for part in remaining_parts:
             repaired = repaired / sanitize_path_component(part, default="output")
-
         return str(repaired)
 
     @staticmethod
     def _ensure_output_parent_writable(path_text: str):
         if not path_text:
-            raise BatchPreflightError("预检失败：输出路径为空")
+            raise BatchPreflightError("输出路径为空")
 
-        output_path = Path(path_text)
-        parent = output_path.parent
+        parent = Path(path_text).parent
         try:
             parent.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            raise BatchPreflightError(f"预检失败：无法创建输出目录：{parent}；{e}") from e
+            raise BatchPreflightError(f"无法创建输出目录 {parent}: {e}") from e
 
         probe = parent / f".videocaptioner_preflight_{time.time_ns()}.tmp"
         try:
             probe.write_text("", encoding="utf-8")
         except Exception as e:
-            raise BatchPreflightError(f"预检失败：输出目录不可写：{parent}；{e}") from e
+            raise BatchPreflightError(f"输出目录不可写 {parent}: {e}") from e
         finally:
             try:
                 probe.unlink(missing_ok=True)
@@ -222,127 +196,21 @@ class BatchProcessThread(QThread):
 
     def _on_progress_wrapper(self, batch_task: BatchTask, progress: int, message: str):
         """进度信号包装器"""
-        if self._is_stale_signal(batch_task):
-            return
-        batch_task.progress = progress
-        batch_task.last_progress_at = time.time()
-        batch_task.last_status_message = message
         self.task_progress.emit(batch_task.file_path, progress, message)
 
     def _on_error_wrapper(self, batch_task: BatchTask, error: str):
         """错误信号包装器"""
-        if self._is_stale_signal(batch_task):
-            return
-        self._handle_task_failure(batch_task, error)
+        batch_task.status = BatchTaskStatus.FAILED
+        batch_task.error_message = error
+        self.task_error.emit(batch_task.file_path, error)
 
     def _on_finished_wrapper(self, batch_task: BatchTask, task=None):
         """完成信号包装器"""
-        if self._is_stale_signal(batch_task):
-            return
         batch_task.status = BatchTaskStatus.COMPLETED
         batch_task.progress = 100
         self.task_completed.emit(batch_task.file_path)
         if batch_task.current_thread in self.threads:
             self.threads.remove(batch_task.current_thread)
-
-    def _is_stale_signal(self, batch_task: BatchTask) -> bool:
-        sender = self.sender()
-        return bool(sender and batch_task.current_thread is not sender)
-
-    def _is_llm_error(self, batch_task: BatchTask, error: str) -> bool:
-        if batch_task.task_type == BatchTaskType.TRANSCRIBE:
-            return False
-        if self._is_probable_llm_stage(batch_task):
-            return True
-
-        error_lower = error.lower()
-        llm_markers = (
-            "llm",
-            "chat.completions",
-            "/responses",
-            "invalid openai api response",
-            "openai",
-            "api connection error",
-            "api timeout",
-            "rate limit error",
-            "authentication error",
-            "url not found error",
-        )
-        return any(marker in error_lower for marker in llm_markers)
-
-    def _handle_task_failure(self, batch_task: BatchTask, error: str):
-        if batch_task.current_thread in self.threads:
-            self.threads.remove(batch_task.current_thread)
-
-        batch_task.error_message = error
-        if (
-            not self._is_non_retryable_error(error)
-            and not self._is_llm_error(batch_task, error)
-            and batch_task.retry_count < MAX_NON_LLM_RETRIES
-            and self.is_running
-        ):
-            batch_task.retry_count += 1
-            batch_task.status = BatchTaskStatus.WAITING
-            batch_task.progress = 0
-            batch_task.current_thread = None
-            batch_task.last_progress_at = time.time()
-            message = f"任务失败，自动重试 {batch_task.retry_count}/{MAX_NON_LLM_RETRIES}：{error}"
-            logger.warning("%s - %s", batch_task.file_path, message)
-            self.task_progress.emit(batch_task.file_path, 0, message)
-            self.task_queue.put(batch_task)
-            return
-
-        batch_task.status = BatchTaskStatus.FAILED
-        batch_task.current_thread = None
-        logger.error("任务失败：%s - %s", batch_task.file_path, error)
-        self.task_error.emit(batch_task.file_path, error)
-
-    @staticmethod
-    def _is_non_retryable_error(error: str) -> bool:
-        error_lower = error.lower()
-        markers = (
-            "预检失败",
-            "winerror 3",
-            "系统找不到指定的路径",
-            "no such file or directory",
-            "file not found",
-            "invalid argument",
-            "文件名、目录名或卷标语法不正确",
-            "输入文件不存在",
-            "输出目录不可写",
-        )
-        return any(marker in error_lower for marker in markers)
-
-    def _is_probable_llm_stage(self, batch_task: BatchTask) -> bool:
-        message = (batch_task.last_status_message or "").lower()
-        if "llm" in message:
-            return True
-        return any(marker in message for marker in ("字幕", "优化", "翻译", "断句"))
-
-    def _check_stalled_tasks(self):
-        now = time.time()
-        for batch_task in list(self.current_tasks.values()):
-            if batch_task.status != BatchTaskStatus.RUNNING:
-                continue
-            if now - batch_task.last_progress_at <= TASK_STALL_TIMEOUT_SECONDS:
-                continue
-
-            error = (
-                f"任务超过 {TASK_STALL_TIMEOUT_SECONDS} 秒无进度，已判定卡死。"
-                f"最后状态：{batch_task.last_status_message or '未知'}"
-            )
-            if self._is_probable_llm_stage(batch_task):
-                error = "LLM/字幕处理" + error
-            logger.error("%s - %s", batch_task.file_path, error)
-            if batch_task.current_thread:
-                try:
-                    if hasattr(batch_task.current_thread, "stop"):
-                        batch_task.current_thread.stop()  # type: ignore
-                    elif batch_task.current_thread.isRunning():
-                        batch_task.current_thread.terminate()
-                except Exception as e:
-                    logger.error("停止卡死任务失败：%s", str(e))
-            self._handle_task_failure(batch_task, error)
 
     def _handle_transcribe_task(self, batch_task: BatchTask):
         # self.max_concurrent_tasks = 3
@@ -415,59 +283,43 @@ class BatchProcessThread(QThread):
         self, batch_task: BatchTask, progress: int, message: str
     ):
         """转录+字幕任务进度包装器"""
-        if self._is_stale_signal(batch_task):
-            return
         progress = progress // 2  # 转录占50%进度
-        batch_task.progress = progress
-        batch_task.last_progress_at = time.time()
-        batch_task.last_status_message = message
         self.task_progress.emit(batch_task.file_path, progress, message)
 
     def _on_trans_sub_finished_wrapper(
         self, batch_task: BatchTask, task: TranscribeTask
     ):
         """转录+字幕任务转录完成包装器"""
-        if self._is_stale_signal(batch_task):
-            return
         if batch_task.current_thread in self.threads:
             self.threads.remove(batch_task.current_thread)
 
         # 创建字幕任务
-        try:
-            if not task.output_path:
-                raise BatchPreflightError("预检失败：转录输出路径为空")
-            subtitle_task = self.factory.create_subtitle_task(
-                task.output_path, batch_task.file_path, need_next_task=True
-            )
-            self._preflight_concrete_task(batch_task, subtitle_task, "字幕")
-            thread = SubtitleThread(subtitle_task)
-            batch_task.current_thread = thread
-            self.current_tasks[batch_task.file_path] = batch_task
+        if not task.output_path:
+            raise ValueError("Task output_path is None")
+        subtitle_task = self.factory.create_subtitle_task(
+            task.output_path, batch_task.file_path, need_next_task=True
+        )
+        self._preflight_concrete_task(batch_task, subtitle_task, "字幕")
+        thread = SubtitleThread(subtitle_task)
+        batch_task.current_thread = thread
+        self.current_tasks[batch_task.file_path] = batch_task
 
-            # 保存线程引用
-            self.threads.append(thread)
+        # 保存线程引用
+        self.threads.append(thread)
 
-            thread.progress.connect(
-                partial(self._on_trans_sub_subtitle_progress_wrapper, batch_task)
-            )
-            thread.error.connect(partial(self._on_error_wrapper, batch_task))
-            thread.finished.connect(partial(self._on_finished_wrapper, batch_task))
+        thread.progress.connect(
+            partial(self._on_trans_sub_subtitle_progress_wrapper, batch_task)
+        )
+        thread.error.connect(partial(self._on_error_wrapper, batch_task))
+        thread.finished.connect(partial(self._on_finished_wrapper, batch_task))
 
-            thread.start()
-        except Exception as e:
-            logger.exception("转录+字幕任务预检失败: %s", str(e))
-            self._handle_task_failure(batch_task, str(e))
+        thread.start()
 
     def _on_trans_sub_subtitle_progress_wrapper(
         self, batch_task: BatchTask, progress: int, message: str
     ):
         """转录+字幕任务字幕进度包装器"""
-        if self._is_stale_signal(batch_task):
-            return
         progress = 50 + progress // 2  # 字幕处理占后50%进度
-        batch_task.progress = progress
-        batch_task.last_progress_at = time.time()
-        batch_task.last_status_message = message
         self.task_progress.emit(batch_task.file_path, progress, message)
 
     def _handle_full_process_task(self, batch_task: BatchTask):
@@ -492,105 +344,78 @@ class BatchProcessThread(QThread):
         self, batch_task: BatchTask, progress: int, message: str
     ):
         """处理全流程任务的转录进度"""
-        if self._is_stale_signal(batch_task):
-            return
         if batch_task.status == BatchTaskStatus.RUNNING:
             progress_value = progress // 3  # 转录占33%进度
-            batch_task.progress = progress_value
-            batch_task.last_progress_at = time.time()
-            batch_task.last_status_message = message
             self.task_progress.emit(batch_task.file_path, progress_value, message)
 
     def on_full_process_finished(self, batch_task: BatchTask, task: TranscribeTask):
         """处理转录完成后开始字幕任务"""
-        if self._is_stale_signal(batch_task):
-            return
         if batch_task.current_thread in self.threads:
             self.threads.remove(batch_task.current_thread)
 
         # 转录完成后创建字幕任务
-        try:
-            if not task.output_path:
-                raise BatchPreflightError("预检失败：转录输出路径为空")
-            subtitle_task = self.factory.create_subtitle_task(
-                task.output_path,
-                batch_task.file_path,
-                need_next_task=True,
-            )
-            self._preflight_concrete_task(batch_task, subtitle_task, "字幕")
-            thread = SubtitleThread(subtitle_task)
-            batch_task.current_thread = thread
+        if not task.output_path:
+            raise ValueError("Task output_path is None")
+        subtitle_task = self.factory.create_subtitle_task(
+            task.output_path,
+            batch_task.file_path,
+            need_next_task=True,
+        )
+        self._preflight_concrete_task(batch_task, subtitle_task, "字幕")
+        thread = SubtitleThread(subtitle_task)
+        batch_task.current_thread = thread
 
-            # 保存线程引用
-            self.threads.append(thread)
+        # 保存线程引用
+        self.threads.append(thread)
 
-            thread.progress.connect(
-                partial(self.on_full_process_subtitle_progress, batch_task)
-            )
-            thread.error.connect(partial(self._on_error_wrapper, batch_task))
-            thread.finished.connect(
-                partial(self.on_full_process_subtitle_finished, batch_task)
-            )
+        thread.progress.connect(
+            partial(self.on_full_process_subtitle_progress, batch_task)
+        )
+        thread.error.connect(partial(self._on_error_wrapper, batch_task))
+        thread.finished.connect(
+            partial(self.on_full_process_subtitle_finished, batch_task)
+        )
 
-            thread.start()
-        except Exception as e:
-            logger.exception("全流程字幕任务预检失败: %s", str(e))
-            self._handle_task_failure(batch_task, str(e))
+        thread.start()
 
     def on_full_process_subtitle_progress(
         self, batch_task: BatchTask, progress: int, message: str
     ):
         """处理全流程任务中字幕部分的进度"""
-        if self._is_stale_signal(batch_task):
-            return
         if batch_task.status == BatchTaskStatus.RUNNING:
             progress_value = 33 + progress // 3  # 字幕处理占中间33%进度
-            batch_task.progress = progress_value
-            batch_task.last_progress_at = time.time()
-            batch_task.last_status_message = message
             self.task_progress.emit(batch_task.file_path, progress_value, message)
 
     def on_full_process_subtitle_finished(
         self, batch_task: BatchTask, video_path: str, subtitle_path: str
     ):
         """处理字幕完成后开始视频合成任务"""
-        if self._is_stale_signal(batch_task):
-            return
         if batch_task.current_thread in self.threads:
             self.threads.remove(batch_task.current_thread)
 
         # 字幕完成后创建视频合成任务
-        try:
-            synthesis_task = self.factory.create_synthesis_task(video_path, subtitle_path)
-            self._preflight_concrete_task(batch_task, synthesis_task, "视频合成")
-            thread = VideoSynthesisThread(synthesis_task)
-            batch_task.current_thread = thread
+        synthesis_task = self.factory.create_synthesis_task(video_path, subtitle_path)
+        self._preflight_concrete_task(batch_task, synthesis_task, "合成")
+        thread = VideoSynthesisThread(synthesis_task)
+        batch_task.current_thread = thread
 
-            # 保存线程引用
-            self.threads.append(thread)
+        # 保存线程引用
+        self.threads.append(thread)
 
-            thread.progress.connect(
-                partial(self.on_full_process_synthesis_progress, batch_task)
-            )
-            thread.error.connect(partial(self._on_error_wrapper, batch_task))
-            thread.finished.connect(partial(self._on_finished_wrapper, batch_task))
+        thread.progress.connect(
+            partial(self.on_full_process_synthesis_progress, batch_task)
+        )
+        thread.error.connect(partial(self._on_error_wrapper, batch_task))
+        thread.finished.connect(partial(self._on_finished_wrapper, batch_task))
 
-            thread.start()
-        except Exception as e:
-            logger.exception("全流程视频合成任务预检失败: %s", str(e))
-            self._handle_task_failure(batch_task, str(e))
+        thread.start()
 
     def on_full_process_synthesis_progress(
         self, batch_task: BatchTask, progress: int, message: str
     ):
         """处理全流程任务中视频合成部分的进度"""
-        if self._is_stale_signal(batch_task):
-            return
         if batch_task.status == BatchTaskStatus.RUNNING:
             progress_value = 66 + progress // 3  # 视频合成占最后34%进度
-            batch_task.progress = progress_value
-            batch_task.last_progress_at = time.time()
-            batch_task.last_status_message = message
             self.task_progress.emit(batch_task.file_path, progress_value, message)
 
     def stop_task(self, file_path: str):
@@ -610,9 +435,7 @@ class BatchProcessThread(QThread):
         for thread in self.threads:
             if hasattr(thread, "stop"):
                 thread.stop()  # type: ignore
-            if not thread.wait(3000):
-                thread.terminate()
-                thread.wait(1000)
+            thread.wait()  # 等待线程结束
         self.threads.clear()
         self.current_tasks.clear()
         # 清空任务队列

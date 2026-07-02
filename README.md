@@ -1,106 +1,159 @@
-# VideoCaptioner-Mod
+<div align="center">
+  <img src="./docs/images/logo.png" alt="VideoCaptioner Logo" width="100">
+  <h1>VideoCaptioner-Mod</h1>
+  <p>基于官方 VideoCaptioner 最新 master 重建的源码/CLI 版字幕处理工具</p>
 
-VideoCaptioner-Mod 是基于 [WEIFENG2333/VideoCaptioner](https://github.com/WEIFENG2333/VideoCaptioner) 的非官方修改版。
+  [PRD](docs/PRD-0.0.6.md) · [CLI 使用](#cli-命令行) · [GUI 桌面版](#gui-桌面版) · [Release](https://github.com/bsbofmusic/VideoCaptioner-Mod/releases)
+</div>
 
-- 当前版本：`0.0.5`
-- 原项目：<https://github.com/WEIFENG2333/VideoCaptioner>
-- 本修改版仓库：<https://github.com/bsbofmusic/VideoCaptioner-Mod>
-- 许可证：GNU General Public License v3.0，见 [LICENSE](LICENSE)
+## VideoCaptioner-Mod 0.0.6
 
-本仓库不是原作者官方版本，也不代表原作者维护、认可或背书。原作者归属、修改版归属与非官方声明见 [NOTICE](NOTICE)。
+0.0.6 以官方 `WEIFENG2333/VideoCaptioner` master `95842ec` 为基座重新迁移 Mod 功能，避免旧版本连续补丁后行为漂移。本仓库保持 GPL-3.0 开源合规，发布以源码/CLI 版为主。
 
-## 更新说明
+Mod 保留的主要功能：Codex Responses API provider、Anthropic/MiniMax Messages API provider、字幕校对独立并发/批次/超时/重试设置、校对子进程防卡死、GUI 拖拽兜底、批处理路径预检、Mod 独立 AppData 名称与仓库链接。
 
-### 0.0.5
-
-- 在“设置 → 翻译与优化”中新增“校对重试次数”滑条，范围 `3-50` 次，默认 `3` 次。
-- 字幕校对阶段会将该次数用于每个批次的 LLM 验证反馈循环，便于按模型稳定性自定义校对精度。
-- 修复首页搜索框拖拽媒体文件时可能无法触发导入的问题。
-- 兼容官方已修复的 Windows 长路径前缀幂等处理，避免已带 `\\?\` 前缀的路径被重复添加前缀。
-
-### 0.0.4
-
-- 在“设置 → 翻译与优化”中新增“校对超时时间”滑条，范围 `90-600` 秒，默认 `90` 秒。
-- 字幕校对阶段会将该超时时间用于每次 LLM 校对请求；推理较慢的模型可适当调高，以减少过早超时并改善校正质量。
-- 字幕校对批次 watchdog 会随超时时间扩展，避免合法重试在较长超时配置下被提前终止。
-
-### 0.0.3
-
-- 在“设置 → 翻译与优化”中新增“校对并发数量”滑条，范围 `1-20`，默认 `10`。
-- 在“设置 → 翻译与优化”中新增“校对批次大小”滑条，范围 `10-100`，默认 `50`。
-- 字幕校对阶段现在独立读取上述两个参数；翻译服务的“线程数/批处理大小”仍只影响翻译流程。
-- 发布 Windows x64 安装包，可在 GitHub Release 下载，包含应用图标、开始菜单快捷方式和卸载程序。
-
-### 0.0.2
-
-- 新增批量任务预检机制，在转录、字幕处理、全流程合成阶段启动前检查输入/输出路径。
-- 自动清洗由文件名生成的输出路径，修复尾随空格、尾随点、Windows 非法字符和保留名。
-- 自动创建输出目录并检查可写性，避免无人值守批处理第一步就因路径问题卡死或反复重试。
-- 将确定性路径错误（如 `[WinError 3]`）标记为不可重试，直接给出失败原因。
-- 字幕校正默认 batch size 从 `30` 行迁移到 `50` 行；已保存旧默认值的用户会一次性迁移。
-- 加强字幕校正/翻译/断句阶段的无进度超时与停止逻辑。
-- 字幕优化批次改为进程隔离执行，单批卡死可强制终止并回退原文，避免 GUI/批处理被不可杀线程拖死。
-
-### 0.0.1
-
-- 新增 `Codex` LLM 提供商，使用 OpenAI Responses API `/responses`。
-- 新增 `Anthropic` LLM 提供商，使用 Anthropic Messages API `/messages`，默认模型配置为 `MiniMax-M2.7`。
-- 保留原有 OpenAI 兼容提供商逻辑，非 Codex/Anthropic 提供商继续走原版 Chat Completions 路径。
-- 增加字幕处理防卡死机制：LLM 请求超时、字幕优化批次无进度超时、批处理任务无进度超时。
-- 任务失败时尽量给出具体原因；批处理中的非 LLM 问题自动重试最多 5 次。
-- 增加 LLM 请求日志对 Responses API 的兼容处理。
-
-## 安装与运行
-
-Windows 用户可在 [GitHub Release](https://github.com/bsbofmusic/VideoCaptioner-Mod/releases/latest) 下载安装包。安装包会创建开始菜单项，并可通过系统“应用和功能”或开始菜单卸载项卸载。
-
-源码运行：
+## 安装
 
 ```bash
 git clone https://github.com/bsbofmusic/VideoCaptioner-Mod.git
 cd VideoCaptioner-Mod
-pip install -e .[gui]
-videocaptioner
+python -m pip install -e .[gui]
 ```
 
-免费功能（B 接口、J 接口、必应/谷歌翻译）无需 API Key。LLM 字幕优化、LLM 翻译、Whisper API 等功能需要自行配置对应服务的 API Key。
+免费功能（必剪语音识别、必应/谷歌翻译）**无需任何配置，安装即用**。
 
-## 隐私与配置提醒
+## CLI 命令行
 
-- 不要公开 `AppData/`、`work-dir/`、日志、缓存或配置文件。
-- `AppData/settings.json` 可能包含 API Key。
-- `AppData/logs/llm_requests.jsonl` 可能包含字幕内容、请求内容和响应内容。
-- 使用云端 ASR、LLM、翻译或 TTS 服务时，相关音频、字幕或文本可能会发送到第三方服务。
+```bash
+videocaptioner --version
 
-## 第三方组件
+# 语音转录（免费，无需 API Key）
+videocaptioner transcribe video.mp4 --asr bijian
 
-第三方组件、依赖和二进制文件说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。不同组件可能有各自许可证，请在再分发时一并遵守。
+# 字幕翻译（免费必应翻译）
+videocaptioner subtitle input.srt --translator bing --target-language en
 
-## 免责声明
+# 全流程：转录 → 优化 → 翻译 → 合成
+videocaptioner process video.mp4 --target-language ja
 
-本项目按“原样”提供，不提供任何明示或默示担保，包括但不限于适销性、特定用途适用性和非侵权担保。
+# 字幕烧录到视频
+videocaptioner synthesize video.mp4 -s subtitle.srt
 
-使用者应自行承担使用本软件产生的风险，包括但不限于字幕内容错误、翻译错误、接口费用、第三方服务限制、账号风险、数据泄露和其他直接或间接后果。
+# 下载在线视频
+videocaptioner download "https://youtube.com/watch?v=xxx"
+```
 
-在 GPL-3.0 允许的最大范围内，原作者和本修改版维护者均不对任何使用结果负责。详见 GPL-3.0 协议中的免责声明和责任限制条款。
+需要 LLM 功能（字幕优化、大模型翻译）时，配置 API Key：
 
-## 源代码与 GPL-3.0 说明
+```bash
+videocaptioner config set llm.api_key <your-key>
+videocaptioner config set llm.api_base https://api.openai.com/v1
+videocaptioner config set llm.model gpt-4o-mini
+# 可选：codex 走 /responses，anthropic 走 /messages；留空则走普通 chat completions
+videocaptioner config set llm.provider codex
+videocaptioner config set subtitle.retry_count 3
+```
 
-本项目作为 GPL-3.0 项目的修改版，继续按 GNU General Public License v3.0 发布。完整对应源代码已在本仓库公开，GitHub Release 也会附带源码包。
+配置优先级：`命令行参数 > 环境变量 (VIDEOCAPTIONER_*) > 配置文件 > 默认值`。运行 `videocaptioner config show` 查看当前配置。
 
-在遵守 GPL-3.0 的前提下，你可以：
+<details>
+<summary>所有 CLI 命令一览</summary>
 
-- 运行本软件；
-- 复制和分发本软件；
-- 修改本软件；
-- 分发你的修改版；
-- 将本软件用于学习、研究、个人、组织或商业场景。
+| 命令 | 说明 |
+|------|------|
+| `gui` | 打开桌面版。也可以直接运行 `videocaptioner-gui` |
+| `transcribe` | 语音转字幕。引擎：`faster-whisper`、`whisper-api`、`bijian`（免费）、`jianying`（免费）、`whisper-cpp` |
+| `subtitle` | 字幕优化/翻译。翻译服务：`llm`、`bing`（免费）、`google`（免费） |
+| `dub` | 根据字幕生成配音音轨或配音视频 |
+| `synthesize` | 字幕烧录到视频（软字幕/硬字幕） |
+| `process` | 全流程处理 |
+| `download` | 下载 YouTube、B站等平台视频 |
+| `config` | 配置管理（`show`、`set`、`get`、`path`、`init`） |
 
-如果你再分发本软件或其修改版，你需要遵守 GPL-3.0，包括但不限于：
+运行 `videocaptioner <命令> --help` 查看完整参数。完整 CLI 文档见 [docs/cli.md](docs/cli.md)。
 
-- 保留版权声明、许可证文本和修改说明；
-- 以 GPL-3.0 兼容方式提供完整对应源代码；
-- 不得向下游接收者施加额外限制；
-- 如果分发二进制/打包版本，应同时提供源码或符合 GPL-3.0 的源码获取方式。
+</details>
 
-本 README 中的免责声明、用途提醒或风险提示不限制 GPL-3.0 授予你的任何权利。
+## GUI 桌面版
+
+```bash
+pip install videocaptioner
+videocaptioner-gui                  # 显式打开桌面版
+videocaptioner gui                  # 等价命令
+videocaptioner                      # 无参数时也会打开桌面版
+```
+
+<details>
+<summary>其他安装方式：Windows 安装包 / macOS 一键脚本</summary>
+
+**Windows**：0.0.6 仅发布源码/CLI 版，不提供新的 exe 安装包。
+
+**macOS**：
+```bash
+curl -fsSL https://raw.githubusercontent.com/bsbofmusic/VideoCaptioner-Mod/main/scripts/run.sh | bash
+```
+
+</details>
+
+
+<!-- <div align="center">
+  <img src="https://h1.appinn.me/file/1731487405884_main.png" alt="界面预览" width="90%" style="border-radius: 5px;">
+</div> -->
+
+![页面预览](https://h1.appinn.me/file/1731487410170_preview1.png)
+![页面预览](https://h1.appinn.me/file/1731487410832_preview2.png)
+
+## LLM API 配置
+
+LLM 仅用于字幕优化和大模型翻译，免费功能（必剪识别、必应翻译）无需配置。
+
+支持所有 OpenAI 兼容接口的服务商：
+
+| 服务商 | 官网 |
+|--------|------|
+| **VideoCaptioner 中转站** | [api.videocaptioner.cn](https://api.videocaptioner.cn) — 高并发，性价比高，支持 GPT/Claude/Gemini 等 |
+| SiliconCloud | [cloud.siliconflow.cn](https://cloud.siliconflow.cn/i/HF95kaoz) |
+| DeepSeek | [platform.deepseek.com](https://platform.deepseek.com) |
+
+在软件设置或 CLI 中填入 API Base URL 和 API Key 即可。GUI 额外支持 Codex 与 Anthropic/MiniMax provider。
+
+## Claude Code Skill
+
+本项目提供了 [Claude Code Skill](https://code.claude.com/docs/en/skills.md)，让 AI 编程助手可以直接调用 VideoCaptioner 处理视频。
+
+安装到 Claude Code：
+
+```bash
+mkdir -p ~/.claude/skills/videocaptioner
+cp skills/SKILL.md ~/.claude/skills/videocaptioner/SKILL.md
+```
+
+然后在 Claude Code 中输入 `/videocaptioner transcribe video.mp4 --asr bijian` 即可使用。
+
+## 工作原理
+
+```
+音视频输入 → 语音识别 → 字幕断句 → LLM 优化 → 翻译 → 视频合成
+```
+
+- 词级时间戳 + VAD 语音活动检测，识别准确率高
+- LLM 语义理解断句，字幕阅读体验自然流畅
+- 上下文感知翻译，支持反思优化机制
+- 批量并发处理，效率高
+
+## 开发
+
+```bash
+git clone https://github.com/bsbofmusic/VideoCaptioner-Mod.git
+cd VideoCaptioner-Mod
+uv sync && uv run videocaptioner     # 运行 GUI
+uv run videocaptioner --help          # 运行 CLI
+uv run pyright                        # 类型检查
+uv run pytest tests/test_cli/ -q      # 运行测试
+```
+
+## 许可证
+
+[GPL-3.0](LICENSE)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=bsbofmusic/VideoCaptioner-Mod&type=Date)](https://star-history.com/#bsbofmusic/VideoCaptioner-Mod&Date)

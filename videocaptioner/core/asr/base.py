@@ -78,18 +78,7 @@ class BaseASR:
         if not self.file_binary:
             return 0.01
         try:
-            if isinstance(self.audio_input, str) and self.audio_input.lower().endswith(
-                ".wav"
-            ):
-                audio = AudioSegment.from_wav(self.audio_input)
-            elif (
-                len(self.file_binary) >= 12
-                and self.file_binary[:4] == b"RIFF"
-                and self.file_binary[8:12] == b"WAVE"
-            ):
-                audio = AudioSegment.from_file(BytesIO(self.file_binary), format="wav")
-            else:
-                audio = AudioSegment.from_file(BytesIO(self.file_binary))
+            audio = AudioSegment.from_file(BytesIO(self.file_binary))
             return audio.duration_seconds
         except Exception as e:
             logger.warning(f"Failed to get audio duration: {e}")
@@ -115,7 +104,7 @@ class BaseASR:
                 Optional[dict], self._cache.get(cache_key, default=None)
             )
             if cached_result is not None:
-                logger.info("找到缓存，直接返回")
+                logger.debug("找到缓存，直接返回")
                 segments = self._make_segments(cached_result)
                 return ASRData(segments)
 
@@ -173,14 +162,12 @@ class BaseASR:
             tag = f"rate_limit:{service_name}"
             time_limit = time.time() - self.RATE_LIMIT_TIME_WINDOW
 
-            # Query recent records
             try:
                 query = "SELECT key FROM Cache WHERE tag = ? AND store_time >= ?"
                 results = self._cache._sql(query, (tag, time_limit)).fetchall()
             except Exception as e:
                 raise RuntimeError(f"Failed to query rate limit: {e}")
 
-            # Get durations using cache API
             durations = []
             for (key,) in results:
                 duration = self._cache.get(key, default=None)
@@ -190,8 +177,6 @@ class BaseASR:
             call_count = len(durations)
             total_duration = sum(durations)
 
-            # Reinstalling refreshes this local quota by removing only rate_limit tags.
-            # Do the same narrowly here, leaving settings and ASR result cache untouched.
             if (
                 total_duration + self.audio_duration > self.RATE_LIMIT_MAX_DURATION
                 or call_count >= self.RATE_LIMIT_MAX_CALLS
@@ -208,7 +193,6 @@ class BaseASR:
                 except Exception as e:
                     raise RuntimeError(f"Failed to refresh rate limit: {e}")
 
-            # Keep the original guard for a single file that exceeds the whole window.
             if total_duration + self.audio_duration > self.RATE_LIMIT_MAX_DURATION:
                 error_msg = f"{service_name} duration limit exceeded"
                 logger.warning(error_msg)
@@ -219,7 +203,6 @@ class BaseASR:
                 logger.warning(error_msg)
                 raise RuntimeError(error_msg)
 
-            # Record current call (store duration directly as float)
             self._cache.set(
                 f"rate_limit_record:{service_name}:{uuid.uuid4()}",
                 self.audio_duration,

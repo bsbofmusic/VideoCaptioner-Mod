@@ -329,7 +329,7 @@ class BatchProcessInterface(QWidget):
         open_folder_action.triggered.connect(lambda: self.open_output_folder(file_path))
         menu.addAction(open_folder_action)
 
-        if status not in (str(BatchTaskStatus.WAITING), str(BatchTaskStatus.FAILED)):
+        if status != str(BatchTaskStatus.WAITING):
             start_action.setEnabled(False)
 
         menu.exec_(self.task_table.viewport().mapToGlobal(pos))
@@ -385,16 +385,13 @@ class BatchProcessInterface(QWidget):
             )
             return
 
-        # 检查是否有等待处理或失败可重试的任务
-        runnable_tasks = 0
+        # 检查是否有等待处理的任务
+        waiting_tasks = 0
         for row in range(self.task_table.rowCount()):
-            if self.task_table.item(row, 2).text() in (
-                str(BatchTaskStatus.WAITING),
-                str(BatchTaskStatus.FAILED),
-            ):
-                runnable_tasks += 1
+            if self.task_table.item(row, 2).text() == str(BatchTaskStatus.WAITING):
+                waiting_tasks += 1
 
-        if runnable_tasks == 0:
+        if waiting_tasks == 0:
             InfoBar.warning(
                 title="无待处理任务",
                 content="所有任务已经在处理或已完成",
@@ -407,7 +404,7 @@ class BatchProcessInterface(QWidget):
         # 显示开始处理的提示
         InfoBar.success(
             title=self.tr("开始处理"),
-            content=f"开始处理 {runnable_tasks} 个任务",
+            content=f"开始处理 {waiting_tasks} 个任务",
             duration=INFOBAR_DURATION_SUCCESS,
             position=InfoBarPosition.TOP,
             parent=self,
@@ -416,11 +413,7 @@ class BatchProcessInterface(QWidget):
         for row in range(self.task_table.rowCount()):
             file_path = self.task_table.item(row, 0).toolTip()
             status = self.task_table.item(row, 2).text()
-            if status in (str(BatchTaskStatus.WAITING), str(BatchTaskStatus.FAILED)):
-                self.task_table.item(row, 2).setToolTip("")
-                progress_bar = self.task_table.cellWidget(row, 1)
-                if progress_bar:
-                    progress_bar.setValue(0)
+            if status == str(BatchTaskStatus.WAITING):
                 task_type = BatchTaskType(self.task_type_combo.currentText())
                 batch_task = BatchTask(file_path, task_type)
                 self.batch_thread.add_task(batch_task)

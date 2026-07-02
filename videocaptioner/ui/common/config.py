@@ -33,9 +33,7 @@ from videocaptioner.core.entities import (
     WhisperModelEnum,
 )
 from videocaptioner.core.translate.types import TargetLanguage
-from videocaptioner.core.utils.platform_utils import (
-    get_available_transcribe_models,
-)
+from videocaptioner.core.utils.platform_utils import get_available_transcribe_models
 
 
 class Language(Enum):
@@ -149,7 +147,7 @@ class Config(QConfig):
         "Translate", "NeedReflectTranslate", False, BoolValidator()
     )
     deeplx_endpoint = ConfigItem("Translate", "DeeplxEndpoint", "")
-    batch_size = RangeConfigItem("Translate", "BatchSize", 50, RangeValidator(5, 50))
+    batch_size = RangeConfigItem("Translate", "BatchSize", 10, RangeValidator(5, 50))
     thread_num = RangeConfigItem("Translate", "ThreadNum", 10, RangeValidator(1, 50))
 
     # ------------------- 转录配置 -------------------
@@ -236,18 +234,6 @@ class Config(QConfig):
     need_optimize = ConfigItem("Subtitle", "NeedOptimize", False, BoolValidator())
     need_translate = ConfigItem("Subtitle", "NeedTranslate", False, BoolValidator())
     need_split = ConfigItem("Subtitle", "NeedSplit", False, BoolValidator())
-    optimize_thread_num = RangeConfigItem(
-        "Subtitle", "OptimizeThreadNum", 10, RangeValidator(1, 20)
-    )
-    optimize_batch_size = RangeConfigItem(
-        "Subtitle", "OptimizeBatchSize", 50, RangeValidator(10, 100)
-    )
-    optimize_timeout_seconds = RangeConfigItem(
-        "Subtitle", "OptimizeTimeoutSeconds", 90, RangeValidator(90, 600)
-    )
-    optimize_retry_count = RangeConfigItem(
-        "Subtitle", "OptimizeRetryCount", 3, RangeValidator(3, 50)
-    )
     target_language = OptionsConfigItem(
         "Subtitle",
         "TargetLanguage",
@@ -262,6 +248,18 @@ class Config(QConfig):
         "Subtitle", "MaxWordCountEnglish", 20, RangeValidator(8, 100)
     )
     custom_prompt_text = ConfigItem("Subtitle", "CustomPromptText", "")
+    optimize_thread_num = RangeConfigItem(
+        "Subtitle", "OptimizeThreadNum", 10, RangeValidator(1, 20)
+    )
+    optimize_batch_size = RangeConfigItem(
+        "Subtitle", "OptimizeBatchSize", 50, RangeValidator(10, 100)
+    )
+    optimize_timeout_seconds = RangeConfigItem(
+        "Subtitle", "OptimizeTimeoutSeconds", 90, RangeValidator(90, 600)
+    )
+    optimize_retry_count = RangeConfigItem(
+        "Subtitle", "OptimizeRetryCount", 3, RangeValidator(3, 50)
+    )
 
     # ------------------- 字幕合成配置 -------------------
     soft_subtitle = ConfigItem("Video", "SoftSubtitle", False, BoolValidator())
@@ -296,7 +294,7 @@ class Config(QConfig):
     )
 
     # 圆角背景模式配置
-    rounded_bg_font_name = ConfigItem("RoundedBgStyle", "FontName", "LXGW WenKai")
+    rounded_bg_font_name = ConfigItem("RoundedBgStyle", "FontName", "Noto Sans SC")
     rounded_bg_font_size = RangeConfigItem(
         "RoundedBgStyle", "FontSize", 52, RangeValidator(16, 120)
     )
@@ -351,27 +349,8 @@ class Config(QConfig):
     # ------------------- 缓存配置 -------------------
     cache_enabled = ConfigItem("Cache", "CacheEnabled", True, BoolValidator())
 
-    # ------------------- 配置迁移标记 -------------------
-    batch_size_default_50_migrated = ConfigItem(
-        "Migrations", "BatchSizeDefault50", False, BoolValidator()
-    )
-
 
 cfg = Config()
 cfg.themeMode.value = Theme.DARK
 cfg.themeColor.value = QColor("#ff28f08b")
 qconfig.load(SETTINGS_PATH, cfg)
-
-
-def _migrate_batch_size_default_to_50():
-    """Apply one-time migration for existing settings that kept old default 30."""
-    if cfg.batch_size_default_50_migrated.value:
-        return
-
-    if cfg.batch_size.value == 30:
-        cfg.set(cfg.batch_size, 50)
-
-    cfg.set(cfg.batch_size_default_50_migrated, True)
-
-
-_migrate_batch_size_default_to_50()

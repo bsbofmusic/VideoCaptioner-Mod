@@ -251,14 +251,12 @@ class TaskCreationInterface(QWidget):
     def dropEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            self.handle_dropped_files(
-                [u.toLocalFile() for u in event.mimeData().urls()]
-            )
+            self.handle_dropped_files([u.toLocalFile() for u in event.mimeData().urls()])
         else:
             event.ignore()
 
-    def eventFilter(self, watched, event):
-        if watched is self.search_input and event.type() in (
+    def eventFilter(self, obj, event):
+        if obj is self.search_input and event.type() in (
             QEvent.DragEnter,
             QEvent.DragMove,
             QEvent.Drop,
@@ -270,10 +268,7 @@ class TaskCreationInterface(QWidget):
                         [u.toLocalFile() for u in event.mimeData().urls()]
                     )
                 return True
-            event.ignore()
-            return True
-
-        return super().eventFilter(watched, event)
+        return super().eventFilter(obj, event)
 
     def handle_dropped_files(self, files):
         for file_path in files:
@@ -287,20 +282,20 @@ class TaskCreationInterface(QWidget):
                     parent=self,
                 )
                 return True
-            else:
-                file_ext = os.path.splitext(file_path)[1][1:].lower()
-                InfoBar.error(
-                    self.tr("格式错误") + file_ext,
-                    self.tr("不支持该文件格式"),
-                    duration=INFOBAR_DURATION_ERROR,
-                    parent=self,
-                )
+
+        InfoBar.error(
+            self.tr("格式错误"),
+            self.tr("不支持该文件格式"),
+            duration=INFOBAR_DURATION_ERROR,
+            parent=self,
+        )
         return False
 
     @staticmethod
     def is_supported_media_file(file_path):
-        if not os.path.isfile(file_path):
+        if not file_path or not os.path.isfile(file_path):
             return False
+
         file_ext = os.path.splitext(file_path)[1][1:].lower()
         supported_formats = {fmt.value for fmt in SupportedVideoFormats} | {
             fmt.value for fmt in SupportedAudioFormats

@@ -47,25 +47,3 @@ docs/.vitepress/dist/
 .claude/
 CLAUDE.md
 videocaptioner/_version.py
-
-# Release hygiene
-*.jsonl
-*.jsonl.*
-*.db
-*.db-shm
-*.db-wal
-*.sqlite
-*.srt
-*.ass
-*.vtt
-*.mp4
-*.mkv
-*.mov
-*.webm
-*.wav
-*.mp3
-*.m4a
-*.aac
-PKG-INFO
-.ruff_cache/
-.mypy_cache/

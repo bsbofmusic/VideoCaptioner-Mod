@@ -128,6 +128,7 @@ class HomeInterface(QWidget):
             self.task_creation_interface.is_supported_media_file(path) for path in files
         ):
             return False
+
         self.stackedWidget.setCurrentWidget(self.task_creation_interface)
         self.pivot.setCurrentItem("TaskCreationInterface")
         return self.task_creation_interface.handle_dropped_files(files)
@@ -147,8 +148,8 @@ class HomeInterface(QWidget):
         else:
             event.ignore()
 
-    def eventFilter(self, watched, event):
-        if watched is self.stackedWidget and event.type() in (
+    def eventFilter(self, obj, event):
+        if obj is self.stackedWidget and event.type() in (
             QEvent.DragEnter,
             QEvent.DragMove,
             QEvent.Drop,
@@ -160,10 +161,7 @@ class HomeInterface(QWidget):
                         [u.toLocalFile() for u in event.mimeData().urls()]
                     )
                 return True
-            event.ignore()
-            return True
-
-        return super().eventFilter(watched, event)
+        return super().eventFilter(obj, event)
 
     def closeEvent(self, event):
         # 关闭事件，关闭所有子界面

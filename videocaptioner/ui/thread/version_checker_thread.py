@@ -5,7 +5,7 @@ from datetime import datetime
 import requests
 from PyQt5.QtCore import QObject, QVersionNumber, pyqtSignal
 
-from videocaptioner.config import VERSION
+from videocaptioner.config import RELEASE_URL, VERSION
 from videocaptioner.core.utils.cache import get_version_state_cache
 from videocaptioner.core.utils.logger import setup_logger
 
@@ -32,31 +32,18 @@ class VersionChecker(QObject):
 
     def get_latest_version_info(self) -> dict:
         """Get latest version information"""
-        url = "https://vc.bkfeng.top/api/version"
-        headers = {"app_version": VERSION}
+        url = "https://api.github.com/repos/bsbofmusic/VideoCaptioner-Mod/releases/latest"
 
         try:
-            response = requests.get(url, timeout=10, headers=headers)
+            response = requests.get(url, timeout=10)
             response.raise_for_status()
             data = response.json()
-            # data = {
-            #     "latest_version": "v1.4.0",
-            #     "update_required": True,
-            #     "update_info": "更新内容",
-            #     "download_url": "https://github.com/WEIFENG2333/VideoCaptioner/releases/latest",
-            #     "announcement": {
-            #         "enabled": True,
-            #         "content": "公告内容211",
-            #         "start_date": "2025-01-01",
-            #         "end_date": "2025-12-30",
-            #     },
-            # }
 
-            self.latest_version = data.get("latest_version", self.current_version)
-            self.update_required = data.get("update_required", False)
-            self.update_info = data.get("update_info", "")
-            self.download_url = data.get("download_url", "")
-            self.announcement = data.get("announcement", {})
+            self.latest_version = data.get("tag_name", self.current_version)
+            self.update_required = False
+            self.update_info = data.get("body", "")
+            self.download_url = data.get("html_url", RELEASE_URL)
+            self.announcement = {}
 
             logger.info("Successfully fetched version info: %s", self.latest_version)
             return data

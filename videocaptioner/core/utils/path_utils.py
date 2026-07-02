@@ -6,7 +6,6 @@ import os
 import re
 from pathlib import Path
 
-
 WINDOWS_RESERVED_NAMES = {
     "CON",
     "PRN",
@@ -39,14 +38,7 @@ def sanitize_path_component(
     default: str = "untitled",
     max_length: int = 180,
 ) -> str:
-    """Return a Windows-safe single path component.
-
-    Windows rejects path components that contain reserved characters/control
-    characters, end with a space or dot, or equal reserved device names such as
-    ``CON``/``NUL``. User media titles commonly contain trailing spaces before
-    the extension (for example ``"1星门总诀 .mp4"``), which becomes an invalid
-    work-dir component if used raw.
-    """
+    """Return a Windows-safe single path component."""
     forbidden_chars = r'<>:"/\\|?*'
     sanitized = re.sub(f"[{re.escape(forbidden_chars)}]", replacement, str(name))
     sanitized = re.sub(r"[\0-\31]", "", sanitized)

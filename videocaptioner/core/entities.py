@@ -476,7 +476,7 @@ class ASRLanguageCapability:
 
 
 def _get_all_languages_except_auto() -> list[TranscribeLanguageEnum]:
-    """获取除 AUTO 外的所有语言"""
+    """获取除 AUTO 外的All语言"""
     return [lang for lang in TranscribeLanguageEnum if lang != TranscribeLanguageEnum.AUTO]
 
 
@@ -671,6 +671,8 @@ class SubtitleConfig:
         if self.need_optimize:
             lines.append("Optimize: Yes")
             lines.append(f"  Model: {self.llm_model or 'None'}")
+            if self.llm_service:
+                lines.append(f"  Provider: {self.llm_service.value}")
             lines.append(f"  Concurrency: {self.optimize_thread_num}")
             lines.append(f"  Batch Size: {self.optimize_batch_size}")
             lines.append(f"  Timeout Seconds: {self.optimize_timeout_seconds}")

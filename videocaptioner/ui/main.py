@@ -24,14 +24,12 @@ def main():
     from videocaptioner.ui.common.config import cfg
     from videocaptioner.ui.view.main_window import MainWindow
 
-    # Qt platform plugin path. In PyInstaller builds, the PyInstaller PyQt hook
-    # sets the correct bundled plugin path; overriding it can break qwindows.dll.
-    if not getattr(sys, "frozen", False):
-        lib_folder = "Lib" if platform.system() == "Windows" else "lib"
-        plugin_path = os.path.join(
-            sys.prefix, lib_folder, "site-packages", "PyQt5", "Qt5", "plugins"
-        )
-        os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = plugin_path
+    # Qt platform plugin path
+    lib_folder = "Lib" if platform.system() == "Windows" else "lib"
+    plugin_path = os.path.join(
+        sys.prefix, lib_folder, "site-packages", "PyQt5", "Qt5", "plugins"
+    )
+    os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = plugin_path
 
     # Logger + global exception hook
     logger = setup_logger("VideoCaptioner")

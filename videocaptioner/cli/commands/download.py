@@ -1,8 +1,8 @@
 """download command — download online video via yt-dlp."""
 
-import shutil
 from argparse import Namespace
 from pathlib import Path
+from typing import Any
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli import output
@@ -13,9 +13,11 @@ def run(args: Namespace, config: dict) -> int:
     out_dir = getattr(args, "output", None) or "."
     quiet = getattr(args, "quiet", False)
 
-    if not shutil.which("yt-dlp"):
-        output.error("yt-dlp not found on PATH")
-        output.hint("Install: pip install yt-dlp")
+    try:
+        import yt_dlp
+    except ImportError:
+        output.error("yt-dlp is not available")
+        output.hint("Install the official package with: pip install videocaptioner")
         return EXIT.DEPENDENCY_MISSING
 
     Path(out_dir).mkdir(parents=True, exist_ok=True)
@@ -23,25 +25,15 @@ def run(args: Namespace, config: dict) -> int:
     progress = None if quiet else output.ProgressLine(f"Downloading {url}").start()
 
     try:
-        import subprocess
-        cmd = [
-            "yt-dlp",
-            "-f", "bestvideo+bestaudio/best",
-            "-o", f"{out_dir}/%(title)s.%(ext)s",
-            "--no-playlist",
-            url,
-        ]
-        if quiet:
-            cmd.append("--quiet")
-
-        result = subprocess.run(cmd, capture_output=quiet, text=True)
-
-        if result.returncode != 0:
-            if progress:
-                progress.fail("Download failed")
-            if result.stderr:
-                output.error(result.stderr.strip())
-            return EXIT.RUNTIME_ERROR
+        ydl_opts: dict[str, Any] = {
+            "format": "bestvideo+bestaudio/best",
+            "outtmpl": f"{out_dir}/%(title)s.%(ext)s",
+            "noplaylist": True,
+            "quiet": quiet,
+            "no_warnings": quiet,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore[arg-type]
+            ydl.download([url])
 
         if progress:
             progress.finish(f"Downloaded to {out_dir}/")

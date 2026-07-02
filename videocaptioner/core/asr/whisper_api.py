@@ -9,7 +9,6 @@ from .asr_data import ASRDataSeg
 from .base import BaseASR
 
 logger = setup_logger("whisper_api")
-WHISPER_API_TIMEOUT = 120
 
 
 class WhisperAPI(BaseASR):
@@ -54,9 +53,7 @@ class WhisperAPI(BaseASR):
         self.prompt = prompt
         self.need_word_time_stamp = need_word_time_stamp
 
-        self.client = OpenAI(
-            base_url=self.base_url, api_key=self.api_key, timeout=WHISPER_API_TIMEOUT
-        )
+        self.client = OpenAI(base_url=self.base_url, api_key=self.api_key)
 
     def _run(
         self, callback: Optional[Callable[[int, str], None]] = None, **kwargs: Any
@@ -109,9 +106,7 @@ class WhisperAPI(BaseASR):
             if self.language:
                 api_kwargs["language"] = self.language
 
-            completion = self.client.audio.transcriptions.create(
-                **api_kwargs, timeout=WHISPER_API_TIMEOUT
-            )
+            completion = self.client.audio.transcriptions.create(**api_kwargs)
             if isinstance(completion, str):
                 raise ValueError(
                     "WhisperAPI returned type error, please check your base URL."

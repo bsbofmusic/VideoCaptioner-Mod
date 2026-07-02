@@ -2,7 +2,7 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
-from videocaptioner.config import MODEL_PATH, SUBTITLE_STYLE_PATH
+from videocaptioner.config import MODEL_PATH
 from videocaptioner.core.entities import (
     LANGUAGES,
     FullProcessTask,
@@ -15,8 +15,8 @@ from videocaptioner.core.entities import (
     TranscribeTask,
     TranscriptAndSubtitleTask,
 )
-from videocaptioner.core.utils.path_utils import safe_stem, sanitize_path_component
 from videocaptioner.ui.common.config import cfg
+from videocaptioner.core.utils.path_utils import safe_stem, sanitize_path_component
 
 
 class TaskFactory:
@@ -24,15 +24,17 @@ class TaskFactory:
 
     @staticmethod
     def get_ass_style(style_name: str) -> str:
-        """获取 ASS 字幕样式内容"""
-        style_path = SUBTITLE_STYLE_PATH / f"{style_name}.txt"
-        if style_path.exists():
-            return style_path.read_text(encoding="utf-8")
+        """获取 ASS 字幕样式内容 (via style_manager, JSON-first with .txt fallback)"""
+        from videocaptioner.core.subtitle.style_manager import load_style
+
+        style = load_style(style_name)
+        if style is not None:
+            return style.to_ass_string()
         return ""
 
     @staticmethod
     def get_rounded_style() -> dict:
-        """获取圆角背景样式配置"""
+        """获取圆角背景样式配置 (from UI cfg overrides)"""
         return {
             "font_name": cfg.rounded_bg_font_name.value,
             "font_size": cfg.rounded_bg_font_size.value,
@@ -263,7 +265,7 @@ class TaskFactory:
         """创建转录和字幕任务"""
         if output_path is None:
             output_path = str(
-                Path(file_path).parent / f"{safe_stem(file_path)}_processed.srt"
+                Path(file_path).parent / f"{Path(file_path).stem}_processed.srt"
             )
 
         return TranscriptAndSubtitleTask(
@@ -284,7 +286,7 @@ class TaskFactory:
         if output_path is None:
             output_path = str(
                 Path(file_path).parent
-                / f"{safe_stem(file_path)}_final{Path(file_path).suffix}"
+                / f"{Path(file_path).stem}_final{Path(file_path).suffix}"
             )
 
         return FullProcessTask(
