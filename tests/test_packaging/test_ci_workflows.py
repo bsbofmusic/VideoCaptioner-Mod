@@ -17,6 +17,15 @@ def _job(source: str, name: str) -> str:
     return match.group("body")
 
 
+def _step(source: str, name: str) -> str:
+    match = re.search(
+        rf"(?ms)^      - name: {re.escape(name)}\n(?P<body>.*?)(?=^      - name: |\Z)",
+        source,
+    )
+    assert match, f"workflow step not found: {name}"
+    return match.group("body")
+
+
 def test_ci_keeps_full_quality_on_312_and_adds_exact_core_python_matrix() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     quality = _job(workflow, "python")
@@ -57,3 +66,52 @@ def test_desktop_release_write_permission_is_tag_only_and_separate_from_builds()
     assert "gh release create" in release
     assert "gh release upload" in release
     assert "--clobber" in release
+
+
+def test_windows_installer_smoke_waits_for_checked_gui_processes() -> None:
+    workflow = DESKTOP_WORKFLOW.read_text(encoding="utf-8")
+    smoke = _step(workflow, "Smoke test silent install and uninstall")
+    helper_match = re.search(
+        r"(?ms)^          function Invoke-CheckedProcess \{\n"
+        r"(?P<body>.*?)"
+        r"^          \}\n\n"
+        r"^          \$installer =",
+        smoke,
+    )
+
+    assert helper_match, "checked-process helper not found"
+    helper = helper_match.group("body")
+    assert "[string]$Executable" in helper
+    assert "[string[]]$ArgumentList" in helper
+    assert "[string]$Description" in helper
+    assert "Start-Process" in helper
+    assert "-FilePath $Executable" in helper
+    assert "-ArgumentList $ArgumentList" in helper
+    assert "-Wait" in helper
+    assert "-PassThru" in helper
+    assert re.search(r"\$process\.ExitCode -ne 0", helper)
+    assert "$($process.ExitCode)" in helper
+
+    setup_calls = re.findall(
+        r'(?m)^          Invoke-CheckedProcess -Executable \$installer\.FullName '
+        r'-ArgumentList \$installerArguments -Description "[^"]+"$',
+        smoke,
+    )
+    uninstall_calls = re.findall(
+        r'(?m)^          Invoke-CheckedProcess -Executable \$uninstaller '
+        r'-ArgumentList \$uninstallerArguments -Description "[^"]+"$',
+        smoke,
+    )
+    assert len(setup_calls) == 2
+    assert len(uninstall_calls) == 1
+    assert "& $installer.FullName" not in smoke
+    assert "& $uninstaller" not in smoke
+    assert re.search(
+        r'\$installerArguments = @\("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", '
+        r'"/SP-", "/DIR=\$installDir"\)',
+        smoke,
+    )
+    assert (
+        '$uninstallerArguments = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")'
+        in smoke
+    )

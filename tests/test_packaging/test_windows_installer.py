@@ -58,7 +58,7 @@ def test_installer_validator_rejects_deprecated_x64_identifier(
 def test_windows_workflow_smokes_installed_render_and_uninstall_cleanup() -> None:
     workflow = DESKTOP_WORKFLOW.read_text(encoding="utf-8")
 
-    assert workflow.count("& $installer.FullName /VERYSILENT") == 2
+    assert workflow.count("Invoke-CheckedProcess -Executable $installer.FullName") == 2
     assert "scripts/smoke_desktop.py $installDir" in workflow
     assert 'DisplayName -eq "VideoCaptioner-Mod"' in workflow
     assert "Install directory remains after uninstall" in workflow
