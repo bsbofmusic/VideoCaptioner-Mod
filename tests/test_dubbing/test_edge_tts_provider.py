@@ -1,9 +1,13 @@
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from videocaptioner.core.speech import (
     EdgeTTSSpeechSynthesizer,
     SpeechProviderConfig,
     SynthesisRequest,
+    providers,
 )
 
 
@@ -19,7 +23,11 @@ class FakeCommunicate:
 
 
 def test_edge_tts_synthesizer_writes_mp3(tmp_path, monkeypatch):
-    monkeypatch.setattr("videocaptioner.core.speech.providers.edge_tts.Communicate", FakeCommunicate)
+    monkeypatch.setattr(
+        providers,
+        "_load_edge_tts",
+        lambda: SimpleNamespace(Communicate=FakeCommunicate),
+    )
 
     config = SpeechProviderConfig(
         provider="edge",
@@ -38,3 +46,19 @@ def test_edge_tts_synthesizer_writes_mp3(tmp_path, monkeypatch):
     assert result.voice == "zh-CN-XiaoxiaoNeural"
     assert FakeCommunicate.calls[-1]["rate"] == "+20%"
     assert FakeCommunicate.calls[-1]["volume"] == "-10%"
+
+
+def test_missing_edge_tts_has_actionable_extra_hint(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def blocked_import(name, *args, **kwargs):
+        if name == "edge_tts" or name.startswith("edge_tts."):
+            raise ModuleNotFoundError("edge_tts intentionally unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+
+    with pytest.raises(RuntimeError, match=r"pip install 'videocaptioner\[dubbing\]'"):
+        providers._load_edge_tts()

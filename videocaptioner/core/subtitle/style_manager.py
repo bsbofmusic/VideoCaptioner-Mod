@@ -13,6 +13,12 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
+LEGACY_STYLE_ALIASES = {
+    "毕导科普风": "default",
+    "番剧可爱风": "anime",
+    "竖屏": "vertical",
+}
+
 
 class StyleMode(Enum):
     ASS = "ass"
@@ -261,8 +267,11 @@ def load_style(
               ``ass-default.json``.
 
     Searches by: exact filename match, prefixed filename (ass-X, rounded-X),
-    or JSON 'name' field.
+    or JSON 'name' field. Legacy persisted names are mapped to their canonical
+    preset before mode-aware filename lookup.
     """
+    name = LEGACY_STYLE_ALIASES.get(name, name)
+
     if styles_dir is None:
         styles_dir = _default_styles_dir()
     if not styles_dir.exists():

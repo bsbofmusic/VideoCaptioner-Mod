@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.0.7
+
+- Split the lightweight CLI core from optional runtime features:
+  - `gui`: PyQt5, PyQt-Fluent-Widgets, ModelScope, psutil, and GPUtil.
+  - `dubbing`: Edge TTS.
+  - `all`: complete GUI and dubbing installation.
+  - Declared `httpx` explicitly for direct ASR/TTS HTTP clients.
+- Made CLI parser and preset imports independent of GUI and Edge TTS packages; missing
+  optional features now return actionable extra-install hints instead of import tracebacks.
+- Added explicit connect/read timeouts to every Bcut upload, task creation, and result request.
+- Preserved persisted subtitle style names `毕导科普风`, `番剧可爱风`, and `竖屏` as aliases of
+  the canonical `default`, `anime`, and `vertical` presets. Unified presets use the bundled
+  `Noto Sans SC`, so line wrapping and glyph metrics can differ slightly from older fonts.
+- Added a dynamically versioned Windows Inno Setup installer while retaining Windows portable
+  zip and macOS desktop artifacts; CI verifies silent install/upgrade, `--version`, doctor,
+  rendering, uninstall registration, and cleanup.
+- Replaced automatic PyPI publishing with idempotent GitHub Release uploads for wheel/sdist and
+  expanded release gates to lockfile, lint, type, unit, build, and fresh-install checks.
+- Retained the v0.0.6 Mod behavior: default Bijian ASR, Codex Responses, Anthropic Messages,
+  proofreading concurrency/retry/hard-timeout controls, drag/drop fallback, path preflight,
+  doctor, dubbing, unified styles, and cross-platform desktop builds.
+
 ## 0.0.6
 
 - Rebuilt the working tree from upstream `WEIFENG2333/VideoCaptioner` master commit `95842ec`.

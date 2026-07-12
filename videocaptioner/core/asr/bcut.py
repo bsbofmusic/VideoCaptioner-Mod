@@ -16,6 +16,9 @@ API_COMMIT_UPLOAD = API_BASE_URL + "/resource/create/complete"
 API_CREATE_TASK = API_BASE_URL + "/task"
 API_QUERY_RESULT = API_BASE_URL + "/task/result"
 
+REQUEST_TIMEOUT = (10, 120)
+UPLOAD_REQUEST_TIMEOUT = (10, 180)
+
 
 class BcutASR(BaseASR):
     """Bilibili Bcut ASR API implementation.
@@ -65,7 +68,12 @@ class BcutASR(BaseASR):
             }
         )
 
-        resp = requests.post(API_REQ_UPLOAD, data=payload, headers=self.headers)
+        resp = requests.post(
+            API_REQ_UPLOAD,
+            data=payload,
+            headers=self.headers,
+            timeout=REQUEST_TIMEOUT,
+        )
         resp.raise_for_status()
         resp = resp.json()
         resp_data = resp["data"]
@@ -97,6 +105,7 @@ class BcutASR(BaseASR):
                 self.__upload_urls[clip],
                 data=self.file_binary[start_range:end_range],
                 headers=self.headers,
+                timeout=UPLOAD_REQUEST_TIMEOUT,
             )
             resp.raise_for_status()
             etag = resp.headers.get("Etag")
@@ -114,7 +123,12 @@ class BcutASR(BaseASR):
                 "model_id": "8",
             }
         )
-        resp = requests.post(API_COMMIT_UPLOAD, data=data, headers=self.headers)
+        resp = requests.post(
+            API_COMMIT_UPLOAD,
+            data=data,
+            headers=self.headers,
+            timeout=REQUEST_TIMEOUT,
+        )
         resp.raise_for_status()
         resp = resp.json()
         self.__download_url = resp["data"]["download_url"]
@@ -125,6 +139,7 @@ class BcutASR(BaseASR):
             API_CREATE_TASK,
             json={"resource": self.__download_url, "model_id": "8"},
             headers=self.headers,
+            timeout=REQUEST_TIMEOUT,
         )
         resp.raise_for_status()
         resp = resp.json()
@@ -137,6 +152,7 @@ class BcutASR(BaseASR):
             API_QUERY_RESULT,
             params={"model_id": 7, "task_id": task_id or self.task_id},
             headers=self.headers,
+            timeout=REQUEST_TIMEOUT,
         )
         resp.raise_for_status()
         resp = resp.json()

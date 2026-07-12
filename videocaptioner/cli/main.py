@@ -21,6 +21,8 @@ from typing import List, Optional
 
 from videocaptioner.cli import exit_codes as EXIT
 
+GUI_OPTIONAL_IMPORT_ROOTS = {"GPUtil", "PyQt5", "modelscope", "psutil", "qfluentwidgets"}
+
 
 def _configure_stdio() -> None:
     """Prefer UTF-8 CLI output, and never crash on legacy Windows encodings."""
@@ -651,11 +653,15 @@ def _run_transcribe(args: argparse.Namespace) -> int:
 def _run_gui(_args: argparse.Namespace) -> int:
     try:
         from videocaptioner.ui.main import main as gui_main
+
+        gui_main()
     except ImportError as exc:
+        missing_root = (exc.name or "").partition(".")[0]
+        if missing_root not in GUI_OPTIONAL_IMPORT_ROOTS:
+            raise
         print(f"GUI dependencies are not available: {exc}")
-        print("Install the official package with: pip install videocaptioner")
+        print("Install GUI support with: pip install 'videocaptioner[gui]'")
         return EXIT.DEPENDENCY_MISSING
-    gui_main()
     return EXIT.SUCCESS
 
 

@@ -20,7 +20,9 @@ AI-powered video captioning: transcribe speech → optimize subtitles → transl
 
 **Always run `videocaptioner <command> --help` first** to check the latest options and defaults before executing a command. The examples below are common patterns, but --help is the source of truth.
 
-- Install: `pip install videocaptioner`
+- Download the VideoCaptioner-Mod wheel from GitHub Releases, then install that wheel path;
+  append `[gui]`, `[dubbing]`, or `[all]` to the path for optional features. The bare PyPI
+  name belongs to the upstream project, not this Mod release channel.
 - FFmpeg required for video synthesis (`brew install ffmpeg` on macOS)
 - **Free (no API key):** transcription (bijian/jianying), translation (Bing/Google)
 - **Requires LLM API key:** subtitle optimization, subtitle re-segmentation, LLM translation. Set via `OPENAI_API_KEY` env var or `--api-key` flag

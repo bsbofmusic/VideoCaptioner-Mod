@@ -22,6 +22,7 @@ classifiers = [
 
 dependencies = [
     "requests>=2.32.4",
+    "httpx>=0.28.1",
     "openai>=1.97.1",
     "diskcache>=5.6.3",
     "yt-dlp>=2025.7.21",
@@ -33,6 +34,20 @@ dependencies = [
     "fonttools>=4.61.1",
     "platformdirs>=4.0.0",
     "tomli>=2.0.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+gui = [
+    "PyQt5==5.15.11",
+    "PyQt-Fluent-Widgets==1.8.4",
+    "modelscope>=1.32.0",
+    "psutil>=7.0.0",
+    "GPUtil>=1.4.0",
+]
+dubbing = [
+    "edge-tts>=7.2.8",
+]
+all = [
     "PyQt5==5.15.11",
     "PyQt-Fluent-Widgets==1.8.4",
     "modelscope>=1.32.0",
@@ -40,9 +55,6 @@ dependencies = [
     "GPUtil>=1.4.0",
     "edge-tts>=7.2.8",
 ]
-
-[project.optional-dependencies]
-gui = []
 
 [project.urls]
 Homepage = "https://github.com/bsbofmusic/VideoCaptioner-Mod"
@@ -108,6 +120,7 @@ dev = [
     "modelscope>=1.32.0",
     "psutil>=7.0.0",
     "GPUtil>=1.4.0",
+    "edge-tts>=7.2.8",
 ]
 
 [tool.pyright]

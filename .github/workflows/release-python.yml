@@ -1,18 +1,19 @@
-name: CI
+name: Release Python Packages
 
 on:
-  pull_request:
   push:
-    branches:
-      - master
-      - main
-      - dev
+    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: python-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  python:
+  quality:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -63,7 +64,27 @@ jobs:
           tests/test_packaging/test_windows_installer.py
           -m "not integration and not llm" -q
 
-      - name: Build package
+  package:
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen --all-extras
+
+      - name: Build wheel and source distribution
         run: uv build
 
       - name: Fresh core and all-extra install smoke tests
@@ -74,3 +95,36 @@ jobs:
           test -f "$WHEEL_PATH"
           VIDEOCAPTIONER_TEST_WHEEL="$WHEEL_PATH" \
             uv run pytest tests/test_packaging/test_fresh_install.py -q
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download package artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Upload wheel and source distribution to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes || \
+              gh release view "$TAG" >/dev/null
+          fi
+          gh release upload "$TAG" dist/* --clobber

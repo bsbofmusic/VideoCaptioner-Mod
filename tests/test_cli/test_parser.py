@@ -8,18 +8,21 @@ from videocaptioner.cli.main import main
 
 
 class TestMainParser:
-    def test_no_args_tries_gui(self, monkeypatch):
+    def test_no_args_tries_gui(self, monkeypatch, capsys):
         # No args: tries to launch GUI. Mock GUI import to avoid opening it in tests.
         import builtins
+
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
             if name == "videocaptioner.ui.main":
-                raise ImportError("mocked")
+                raise ModuleNotFoundError("mocked", name="PyQt5")
             return original_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", mock_import)
         assert main([]) == EXIT.DEPENDENCY_MISSING
+        output = capsys.readouterr().out
+        assert "pip install 'videocaptioner[gui]'" in output
 
     def test_version(self, capsys):
         with pytest.raises(SystemExit) as exc:
@@ -46,18 +49,36 @@ class TestMainParser:
         assert "config" in out
         assert "doctor" in out
 
-    def test_gui_command_reports_missing_gui_dependencies(self, monkeypatch):
+    def test_gui_command_reports_missing_gui_dependencies(self, monkeypatch, capsys):
         import builtins
 
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
             if name == "videocaptioner.ui.main":
-                raise ImportError("mocked")
+                raise ModuleNotFoundError("mocked", name="PyQt5")
             return original_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", mock_import)
         assert main(["gui"]) == EXIT.DEPENDENCY_MISSING
+        output = capsys.readouterr().out
+        assert "pip install 'videocaptioner[gui]'" in output
+
+    def test_gui_command_does_not_mislabel_unrelated_import_errors(self, monkeypatch, capsys):
+        import builtins
+
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "videocaptioner.ui.main":
+                raise ImportError("internal import failure", name="videocaptioner.internal")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        assert main(["gui"]) == EXIT.GENERAL_ERROR
+        captured = capsys.readouterr()
+        assert "internal import failure" in captured.err
+        assert "videocaptioner[gui]" not in captured.out + captured.err
 
 
 class TestTranscribeParser:

@@ -17,7 +17,7 @@ def run(args: Namespace, config: dict) -> int:
         import yt_dlp
     except ImportError:
         output.error("yt-dlp is not available")
-        output.hint("Install the official package with: pip install videocaptioner")
+        output.hint("Reinstall the VideoCaptioner-Mod release wheel; yt-dlp is a core dependency")
         return EXIT.DEPENDENCY_MISSING
 
     Path(out_dir).mkdir(parents=True, exist_ok=True)

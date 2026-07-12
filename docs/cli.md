@@ -3,11 +3,18 @@
 ## 安装
 
 ```bash
-pip install videocaptioner          # CLI + GUI 桌面版
+# 先从 GitHub Release 下载 wheel；本 Mod 不自动发布到 PyPI
+WHEEL=./videocaptioner-0.0.7-py3-none-any.whl
+python -m pip install "$WHEEL"             # 轻量 CLI 核心
+python -m pip install "${WHEEL}[gui]"      # GUI 桌面版
+python -m pip install "${WHEEL}[dubbing]"  # Edge TTS 配音
+python -m pip install "${WHEEL}[all]"      # 完整功能
 ```
 
 免费功能（转录、必应/谷歌翻译）无需任何配置，安装后直接使用。
-需要桌面版时运行 `videocaptioner-gui`、`videocaptioner gui`，或直接运行无参数的 `videocaptioner`。
+安装 `gui` extra 后，可运行 `videocaptioner-gui`、`videocaptioner gui`，或直接运行无参数的 `videocaptioner`。
+默认 Edge TTS 配音需要 `dubbing` 或 `all` extra。
+裸命令 `pip install videocaptioner` 会指向已有的上游 PyPI 项目，而不是 VideoCaptioner-Mod。
 
 ---
 

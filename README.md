@@ -6,21 +6,32 @@
   [PRD](docs/PRD-0.0.6.md) · [CLI 使用](#cli-命令行) · [GUI 桌面版](#gui-桌面版) · [Release](https://github.com/bsbofmusic/VideoCaptioner-Mod/releases)
 </div>
 
-## VideoCaptioner-Mod 0.0.6
+## VideoCaptioner-Mod 0.0.7
 
-0.0.6 以官方 `WEIFENG2333/VideoCaptioner` master `95842ec` 为基座重新迁移 Mod 功能，避免旧版本连续补丁后行为漂移。本仓库保持 GPL-3.0 开源合规，发布以源码/CLI 版为主。
+0.0.7 是一次发布硬化版本：默认安装缩减为无 GUI 的 CLI 核心，桌面、GPU 检测和 Edge TTS 改为按需 extras；同时加入 Bcut 请求超时、旧字幕样式名称兼容、Windows Inno 安装包，以及经过完整质量门禁的 GitHub Release 资产。
 
 Mod 保留的主要功能：Codex Responses API provider、Anthropic/MiniMax Messages API provider、字幕校对独立并发/批次/超时/重试设置、校对子进程防卡死、GUI 拖拽兜底、批处理路径预检、Mod 独立 AppData 名称与仓库链接。
+
+旧设置中的 `毕导科普风`、`番剧可爱风`、`竖屏` 会自动映射到统一的 `default`、`anime`、`vertical` 预设。统一预设使用随包附带的 `Noto Sans SC`，因此与旧字体相比，换行位置或字形宽度可能有轻微差异。
 
 ## 安装
 
 ```bash
-git clone https://github.com/bsbofmusic/VideoCaptioner-Mod.git
-cd VideoCaptioner-Mod
-python -m pip install -e .[gui]
+# 从 GitHub Release 下载 wheel 后安装；本 Mod 不自动发布到 PyPI
+WHEEL=./videocaptioner-0.0.7-py3-none-any.whl
+
+# 轻量 CLI 核心（不安装 PyQt、modelscope、GPU 检测或 Edge TTS）
+python -m pip install "$WHEEL"
+
+# 按需安装功能
+python -m pip install "${WHEEL}[gui]"       # GUI + 桌面/GPU 检测依赖
+python -m pip install "${WHEEL}[dubbing]"  # Edge TTS 配音
+python -m pip install "${WHEEL}[all]"      # 完整功能
 ```
 
 免费功能（必剪语音识别、必应/谷歌翻译）**无需任何配置，安装即用**。
+wheel、sdist、Windows 安装包和桌面便携包可从 [GitHub Releases](https://github.com/bsbofmusic/VideoCaptioner-Mod/releases) 下载。
+裸命令 `pip install videocaptioner` 对应的是已有的上游 PyPI 项目，不是本 Mod 的发布渠道。
 
 ## CLI 命令行
 
@@ -77,18 +88,20 @@ videocaptioner config set subtitle.retry_count 3
 ## GUI 桌面版
 
 ```bash
-pip install videocaptioner
+python -m pip install './videocaptioner-0.0.7-py3-none-any.whl[gui]'
 videocaptioner-gui                  # 显式打开桌面版
 videocaptioner gui                  # 等价命令
 videocaptioner                      # 无参数时也会打开桌面版
 ```
 
+如果只安装了 CLI 核心，无参数或 `gui` 命令会给出安装 `videocaptioner[gui]` 的提示，不会输出 Python traceback。
+
 <details>
 <summary>其他安装方式：Windows 安装包 / macOS 一键脚本</summary>
 
-**Windows**：0.0.6 仅发布源码/CLI 版，不提供新的 exe 安装包。
+**Windows**：GitHub Release 同时提供可直接解压运行的 zip，以及支持静默安装/卸载的 Inno Setup 安装包。
 
-**macOS**：
+**macOS**：GitHub Release 保留便携 zip / app zip，也可使用一键脚本：
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bsbofmusic/VideoCaptioner-Mod/main/scripts/run.sh | bash
 ```
@@ -146,10 +159,17 @@ cp skills/SKILL.md ~/.claude/skills/videocaptioner/SKILL.md
 ```bash
 git clone https://github.com/bsbofmusic/VideoCaptioner-Mod.git
 cd VideoCaptioner-Mod
-uv sync && uv run videocaptioner     # 运行 GUI
+uv sync --all-extras
+uv run videocaptioner                 # 运行 GUI
 uv run videocaptioner --help          # 运行 CLI
-uv run pyright                        # 类型检查
-uv run pytest tests/test_cli/ -q      # 运行测试
+uv run ruff check videocaptioner tests scripts
+uv run pyright \
+  videocaptioner/cli/ videocaptioner/core/asr/bcut.py \
+  videocaptioner/core/dubbing/ videocaptioner/core/speech/providers.py \
+  videocaptioner/core/subtitle/style_manager.py videocaptioner/ui/task_factory.py
+QT_QPA_PLATFORM=offscreen uv run pytest \
+  tests/test_cli tests/test_dubbing tests/test_asr tests/test_style \
+  -m "not integration and not slow and not llm" -q
 ```
 
 ## 许可证

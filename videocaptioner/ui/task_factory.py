@@ -15,8 +15,8 @@ from videocaptioner.core.entities import (
     TranscribeTask,
     TranscriptAndSubtitleTask,
 )
-from videocaptioner.ui.common.config import cfg
 from videocaptioner.core.utils.path_utils import safe_stem, sanitize_path_component
+from videocaptioner.ui.common.config import cfg
 
 
 class TaskFactory:

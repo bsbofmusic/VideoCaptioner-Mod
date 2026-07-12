@@ -6,7 +6,9 @@ on:
       - "videocaptioner/**"
       - "resource/**"
       - "scripts/build_desktop.py"
+      - "scripts/build_windows_installer.py"
       - "scripts/smoke_desktop.py"
+      - "packaging/windows/**"
       - "VideoCaptioner.spec"
       - "pyproject.toml"
       - "uv.lock"
@@ -54,7 +56,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --all-extras
 
       - name: Build desktop bundle
         run: uv run --with pyinstaller --with static-ffmpeg python scripts/build_desktop.py --clean
@@ -62,11 +64,66 @@ jobs:
       - name: Smoke test packaged app
         run: uv run python scripts/smoke_desktop.py dist/VideoCaptioner
 
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        run: uv run python scripts/build_windows_installer.py
+
+      - name: Smoke test silent install and uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem artifacts -Filter "*-setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Windows setup artifact was not created" }
+
+          $installDir = Join-Path $env:RUNNER_TEMP "VideoCaptioner-installed"
+          if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
+
+          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- "/DIR=$installDir"
+          if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit code $LASTEXITCODE" }
+
+          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- "/DIR=$installDir"
+          if ($LASTEXITCODE -ne 0) { throw "Installer upgrade/reinstall failed with exit code $LASTEXITCODE" }
+
+          $exe = Join-Path $installDir "VideoCaptioner.exe"
+          if (-not (Test-Path $exe)) { throw "Installed executable not found: $exe" }
+
+          $uninstallRoot = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+          $uninstallEntry = Get-ChildItem $uninstallRoot | Get-ItemProperty |
+            Where-Object { $_.DisplayName -eq "VideoCaptioner-Mod" } | Select-Object -First 1
+          if (-not $uninstallEntry) { throw "VideoCaptioner-Mod uninstall entry was not registered" }
+
+          $versionOutput = & $exe --version 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "Installed --version check failed" }
+          Write-Host $versionOutput
+
+          $smokeOutput = uv run python scripts/smoke_desktop.py $installDir 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "Installed package smoke failed" }
+          Write-Host $smokeOutput
+
+          $uninstaller = Join-Path $installDir "unins000.exe"
+          if (-not (Test-Path $uninstaller)) { throw "Uninstaller not found: $uninstaller" }
+          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          if ($LASTEXITCODE -ne 0) { throw "Uninstaller failed with exit code $LASTEXITCODE" }
+          for ($attempt = 0; $attempt -lt 20 -and (Test-Path $installDir); $attempt++) {
+            Start-Sleep -Milliseconds 500
+          }
+          if (Test-Path $installDir) { throw "Install directory remains after uninstall: $installDir" }
+          $remainingEntry = Get-ChildItem $uninstallRoot | Get-ItemProperty |
+            Where-Object { $_.DisplayName -eq "VideoCaptioner-Mod" } | Select-Object -First 1
+          if ($remainingEntry) { throw "VideoCaptioner-Mod uninstall entry remains after uninstall" }
+
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ runner.os }}
-          path: artifacts/*.zip
+          path: |
+            artifacts/*.zip
+            artifacts/*-setup.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -77,6 +134,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          gh release view "$TAG" >/dev/null 2>&1 || \
-            gh release create "$TAG" --title "$TAG" --generate-notes
-          gh release upload "$TAG" artifacts/*.zip --clobber
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes || \
+              gh release view "$TAG" >/dev/null
+          fi
+          gh release upload "$TAG" artifacts/* --clobber

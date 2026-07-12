@@ -8,7 +8,6 @@ import wave
 from pathlib import Path
 from typing import Any, Protocol
 
-import edge_tts
 import requests
 
 from videocaptioner.core.utils.cache import get_tts_cache
@@ -17,6 +16,18 @@ from videocaptioner.core.utils.logger import setup_logger
 from .models import SpeechProviderConfig, SynthesisRequest, SynthesisResult
 
 logger = setup_logger("speech")
+
+
+def _load_edge_tts() -> Any:
+    """Import Edge TTS only when its provider is invoked."""
+    try:
+        import edge_tts
+    except ImportError as exc:
+        raise RuntimeError(
+            "Edge TTS support is not installed. "
+            "Install it with: pip install 'videocaptioner[dubbing]'"
+        ) from exc
+    return edge_tts
 
 
 class SpeechSynthesizer(Protocol):
@@ -72,6 +83,7 @@ class EdgeTTSSpeechSynthesizer:
         )
 
     async def _save(self, text: str, voice: str, path: Path) -> None:
+        edge_tts = _load_edge_tts()
         communicate = edge_tts.Communicate(
             text=text.strip(),
             voice=voice,
