@@ -120,9 +120,8 @@ jobs:
 
               foreach ($key in (Get-ChildItem -LiteralPath $root -ErrorAction Stop)) {
                 $entry = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
-                if ($null -eq $entry) {
-                  throw "Registry property read returned no entry for $($key.PSPath)"
-                }
+                # Windows may contain legitimate empty uninstall keys; -ErrorAction Stop still surfaces provider errors.
+                if ($null -eq $entry) { continue }
                 $displayNameMatches = $entry.DisplayName -eq "VideoCaptioner-Mod"
                 if (-not $displayNameMatches) { continue }
                 if ([string]::IsNullOrWhiteSpace([string]$entry.InstallLocation)) { continue }

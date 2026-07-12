@@ -151,13 +151,13 @@ def test_windows_installer_smoke_checks_all_matching_uninstall_registry_views() 
         r"-ErrorAction Stop\)\) \{\n"
         r"^                \$entry = Get-ItemProperty -LiteralPath \$key\.PSPath "
         r"-ErrorAction Stop\n"
-        r"^                if \(\$null -eq \$entry\) \{\n"
-        r'^                  throw "Registry property read returned no entry for '
-        r'\$\(\$key\.PSPath\)"\n'
-        r"^                \}$",
+        r"^                # Windows may contain legitimate empty uninstall keys; "
+        r"-ErrorAction Stop still surfaces provider errors\.\n"
+        r"^                if \(\$null -eq \$entry\) \{ continue \}$",
         finder,
     )
-    assert registry_reads, "registry enumeration and reads must fail closed"
+    assert registry_reads, "registry reads must stop on provider errors and skip empty keys"
+    assert 'throw "Registry property read returned no entry' not in finder
     assert finder.index("try {") > registry_reads.end()
     assert "SilentlyContinue" not in finder
     assert "SilentlyContinue" not in smoke
