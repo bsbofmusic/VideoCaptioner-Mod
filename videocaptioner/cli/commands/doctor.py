@@ -57,11 +57,25 @@ def _check_python() -> Check:
 
 
 def _check_command(name: str, purpose: str) -> Check:
-    path = shutil.which(name)
+    path = _resolve_command(name)
     if not path:
         return Check(name, "error", f"{name} not found. {purpose}", f"Install {name} and make sure it is on PATH")
-    version = _command_version(name)
+    version = _command_version(path)
     return Check(name, "ok", f"{path}" + (f" ({version})" if version else ""))
+
+
+def _resolve_command(name: str) -> str | None:
+    path = shutil.which(name)
+    if path:
+        return path
+
+    from videocaptioner.config import BUNDLED_BIN_PATH
+
+    for candidate_name in (name, f"{name}.exe"):
+        candidate = BUNDLED_BIN_PATH / candidate_name
+        if candidate.is_file():
+            return str(candidate)
+    return None
 
 
 def _check_ytdlp() -> Check:

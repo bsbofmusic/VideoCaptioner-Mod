@@ -2,6 +2,7 @@
 
 ## 0.0.7
 
+- Fixed packaged `doctor` detection so bundled `ffmpeg` and `ffprobe` are recognized without relying on the host `PATH`.
 - Split the lightweight CLI core from optional runtime features:
   - `gui`: PyQt5, PyQt-Fluent-Widgets, ModelScope, psutil, and GPUtil.
   - `dubbing`: Edge TTS.
