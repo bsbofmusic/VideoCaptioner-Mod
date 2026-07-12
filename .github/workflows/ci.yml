@@ -59,6 +59,7 @@ jobs:
           tests/test_dubbing
           tests/test_asr
           tests/test_style
+          tests/test_packaging/test_ci_workflows.py
           tests/test_packaging/test_dependency_layers.py
           tests/test_packaging/test_windows_installer.py
           -m "not integration and not llm" -q
@@ -74,3 +75,55 @@ jobs:
           test -f "$WHEEL_PATH"
           VIDEOCAPTIONER_TEST_WHEEL="$WHEEL_PATH" \
             uv run pytest tests/test_packaging/test_fresh_install.py -q
+
+  core-compatibility:
+    name: Core wheel (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "${{ matrix.python-version }}"
+
+      - name: Build core wheel
+        run: uv build --wheel
+
+      - name: Install core wheel without optional extras
+        run: |
+          python -m venv .core-venv
+          .core-venv/bin/python -m pip install --disable-pip-version-check dist/*.whl
+
+      - name: Smoke core CLI and guarded GUI entry points
+        shell: bash
+        run: |
+          source .core-venv/bin/activate
+          videocaptioner --help
+          videocaptioner transcribe --help
+
+          assert_gui_missing() {
+            set +e
+            output="$("$@" 2>&1)"
+            status=$?
+            set -e
+            test "$status" -eq 4
+            grep -F "pip install 'videocaptioner[gui]'" <<<"$output"
+            if grep -F "Traceback" <<<"$output"; then
+              echo "GUI command emitted a traceback" >&2
+              return 1
+            fi
+          }
+
+          assert_gui_missing videocaptioner gui
+          assert_gui_missing videocaptioner-gui

@@ -63,7 +63,7 @@ Issues = "https://github.com/bsbofmusic/VideoCaptioner-Mod/issues"
 
 [project.scripts]
 videocaptioner = "videocaptioner.cli.main:main"
-videocaptioner-gui = "videocaptioner.ui.main:main"
+videocaptioner-gui = "videocaptioner.cli.main:gui_main"
 
 # videocaptioner (no args), videocaptioner gui, and videocaptioner-gui launch the GUI.
 

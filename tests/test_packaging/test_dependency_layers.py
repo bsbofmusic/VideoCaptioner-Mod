@@ -58,3 +58,10 @@ def test_dev_environment_keeps_optional_runtime_for_full_tests() -> None:
     dev = _names(metadata["dependency-groups"]["dev"])
 
     assert OPTIONAL_RUNTIME <= dev
+
+
+def test_gui_console_script_uses_guarded_cli_wrapper() -> None:
+    scripts = _metadata()["project"]["scripts"]
+
+    assert scripts["videocaptioner"] == "videocaptioner.cli.main:main"
+    assert scripts["videocaptioner-gui"] == "videocaptioner.cli.main:gui_main"

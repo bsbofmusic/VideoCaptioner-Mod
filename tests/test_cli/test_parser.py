@@ -4,7 +4,7 @@ import pytest
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli.commands.process import _resolve_final_output_path
-from videocaptioner.cli.main import main
+from videocaptioner.cli.main import gui_main, main
 
 
 class TestMainParser:
@@ -63,6 +63,22 @@ class TestMainParser:
         assert main(["gui"]) == EXIT.DEPENDENCY_MISSING
         output = capsys.readouterr().out
         assert "pip install 'videocaptioner[gui]'" in output
+
+    def test_standalone_gui_entry_reports_missing_gui_dependencies(self, monkeypatch, capsys):
+        import builtins
+
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "videocaptioner.ui.main":
+                raise ModuleNotFoundError("mocked", name="PyQt5")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        assert gui_main() == EXIT.DEPENDENCY_MISSING
+        output = capsys.readouterr().out
+        assert "pip install 'videocaptioner[gui]'" in output
+        assert "Traceback" not in output
 
     def test_gui_command_does_not_mislabel_unrelated_import_errors(self, monkeypatch, capsys):
         import builtins

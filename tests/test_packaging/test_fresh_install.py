@@ -70,6 +70,7 @@ def test_core_only_wheel_has_no_optional_modules_and_core_cli_works(tmp_path: Pa
     venv = _install_fresh(tmp_path, str(wheel), "core")
     python = _venv_python(venv)
     cli = _venv_script(venv, "videocaptioner")
+    gui_cli = _venv_script(venv, "videocaptioner-gui")
 
     probe = _run(
         [
@@ -91,8 +92,8 @@ def test_core_only_wheel_has_no_optional_modules_and_core_cli_works(tmp_path: Pa
         assert result.returncode == 0, result.stderr
         assert "Traceback" not in result.stderr
 
-    for args in ([], ["gui"]):
-        result = _run([str(cli), *args], cwd=venv)
+    for command in ([str(cli)], [str(cli), "gui"], [str(gui_cli)]):
+        result = _run(command, cwd=venv)
         combined = result.stdout + result.stderr
         assert result.returncode == 4, combined
         assert "pip install 'videocaptioner[gui]'" in combined

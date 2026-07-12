@@ -51,10 +51,18 @@ def validate_source() -> None:
         "AppVersion={#MyAppVersion}",
         "OutputBaseFilename=VideoCaptioner-{#MyAppVersion}-windows-x64-setup",
         "PrivilegesRequired=lowest",
+        "ArchitecturesAllowed=x64compatible",
+        "ArchitecturesInstallIn64BitMode=x64compatible",
         "UninstallDisplayIcon=",
         '[Files]',
         '[Icons]',
     ]
+    if re.search(
+        r"^Architectures(?:Allowed|InstallIn64BitMode)=x64$",
+        source,
+        re.MULTILINE,
+    ):
+        raise RuntimeError("Installer source uses deprecated x64 architecture identifier")
     missing = [token for token in required if token not in source]
     if missing:
         raise RuntimeError("Installer source is missing required directives: " + ", ".join(missing))

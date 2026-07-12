@@ -60,6 +60,7 @@ jobs:
           tests/test_dubbing
           tests/test_asr
           tests/test_style
+          tests/test_packaging/test_ci_workflows.py
           tests/test_packaging/test_dependency_layers.py
           tests/test_packaging/test_windows_installer.py
           -m "not integration and not llm" -q

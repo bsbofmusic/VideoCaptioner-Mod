@@ -665,6 +665,12 @@ def _run_gui(_args: argparse.Namespace) -> int:
     return EXIT.SUCCESS
 
 
+def gui_main() -> int:
+    """Launch the GUI through the same optional-dependency guard as the main CLI."""
+    _configure_stdio()
+    return _run_gui(argparse.Namespace())
+
+
 def _run_subtitle(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.subtitle import run
     config = _load_config(args)

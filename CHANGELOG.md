@@ -7,9 +7,10 @@
   - `dubbing`: Edge TTS.
   - `all`: complete GUI and dubbing installation.
   - Declared `httpx` explicitly for direct ASR/TTS HTTP clients.
-- Made CLI parser and preset imports independent of GUI and Edge TTS packages; missing
-  optional features now return actionable extra-install hints instead of import tracebacks.
-- Added explicit connect/read timeouts to every Bcut upload, task creation, and result request.
+- Made CLI parser and preset imports independent of GUI and Edge TTS packages; both GUI entry
+  paths now return actionable extra-install hints instead of import tracebacks.
+- Added explicit connect/read/write/pool timeouts to every Bcut request plus a ten-minute
+  monotonic polling deadline that also caps the final result request and pending-state sleeps.
 - Preserved persisted subtitle style names `毕导科普风`, `番剧可爱风`, and `竖屏` as aliases of
   the canonical `default`, `anime`, and `vertical` presets. Unified presets use the bundled
   `Noto Sans SC`, so line wrapping and glyph metrics can differ slightly from older fonts.
