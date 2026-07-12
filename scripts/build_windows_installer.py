@@ -57,6 +57,7 @@ def validate_source() -> None:
         '[Files]',
         '[Icons]',
     ]
+    required_exact_directives = ["UninstallDisplayName={#MyAppName}"]
     if re.search(
         r"^Architectures(?:Allowed|InstallIn64BitMode)=x64$",
         source,
@@ -64,6 +65,10 @@ def validate_source() -> None:
     ):
         raise RuntimeError("Installer source uses deprecated x64 architecture identifier")
     missing = [token for token in required if token not in source]
+    source_lines = source.splitlines()
+    missing.extend(
+        directive for directive in required_exact_directives if directive not in source_lines
+    )
     if missing:
         raise RuntimeError("Installer source is missing required directives: " + ", ".join(missing))
     if re.search(r'#define\s+MyAppVersion\s+"\d', source):
