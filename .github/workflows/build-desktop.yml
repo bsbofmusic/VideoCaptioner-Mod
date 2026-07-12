@@ -103,7 +103,7 @@ jobs:
             "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
           )
 
-          function Get-MatchingUninstallEntries {
+          function Get-VideoCaptionerUninstallEntries {
             param(
               [string[]]$Roots,
               [string]$InstallDir
@@ -116,11 +116,13 @@ jobs:
             $normalizedInstallDir = [System.IO.Path]::GetFullPath($InstallDir).TrimEnd($pathSeparators)
 
             foreach ($root in $Roots) {
-              if (-not (Test-Path -LiteralPath $root)) { continue }
+              if (-not (Test-Path -LiteralPath $root -ErrorAction Stop)) { continue }
 
-              foreach ($key in (Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
-                $entry = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
-                if ($null -eq $entry) { continue }
+              foreach ($key in (Get-ChildItem -LiteralPath $root -ErrorAction Stop)) {
+                $entry = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction Stop
+                if ($null -eq $entry) {
+                  throw "Registry property read returned no entry for $($key.PSPath)"
+                }
                 $displayNameMatches = $entry.DisplayName -eq "VideoCaptioner-Mod"
                 if (-not $displayNameMatches) { continue }
                 if ([string]::IsNullOrWhiteSpace([string]$entry.InstallLocation)) { continue }
@@ -138,7 +140,8 @@ jobs:
                   $normalizedInstallDir
                 )) {
                   [PSCustomObject]@{
-                    RegistryPath = $key.PSPath
+                    RegistryPath   = $key.PSPath
+                    InstallLocation = $normalizedEntryInstallDir
                   }
                 }
               }
@@ -153,11 +156,11 @@ jobs:
           $exe = Join-Path $installDir "VideoCaptioner.exe"
           if (-not (Test-Path $exe)) { throw "Installed executable not found: $exe" }
 
-          $uninstallEntries = @(Get-MatchingUninstallEntries -Roots $uninstallRoots -InstallDir $installDir)
-          if ($uninstallEntries.Count -ne 1) {
-            throw "Expected exactly one matching uninstall entry, found $($uninstallEntries.Count)"
+          $postInstallMatches = @(Get-VideoCaptionerUninstallEntries -Roots $uninstallRoots -InstallDir $installDir)
+          if ($postInstallMatches.Count -ne 1) {
+            throw "Expected exactly one matching uninstall entry, found $($postInstallMatches.Count)"
           }
-          Write-Host "Matched uninstall registry entry: $($uninstallEntries[0].RegistryPath)"
+          Write-Host "Matched uninstall registry entry: $($postInstallMatches[0].RegistryPath)"
 
           $versionOutput = & $exe --version 2>&1
           if ($LASTEXITCODE -ne 0) { throw "Installed --version check failed" }
@@ -167,7 +170,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Installed package smoke failed" }
           Write-Host $smokeOutput
 
-          $uninstaller = Join-Path $installDir "unins000.exe"
+          $uninstaller = Join-Path -Path ($postInstallMatches[0].InstallLocation) -ChildPath "unins000.exe"
           if (-not (Test-Path $uninstaller)) { throw "Uninstaller not found: $uninstaller" }
           $uninstallerArguments = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")
           Invoke-CheckedProcess -Executable $uninstaller -ArgumentList $uninstallerArguments -Description "Uninstaller"
@@ -175,7 +178,7 @@ jobs:
             Start-Sleep -Milliseconds 500
           }
           if (Test-Path $installDir) { throw "Install directory remains after uninstall: $installDir" }
-          $remainingEntries = @(Get-MatchingUninstallEntries -Roots $uninstallRoots -InstallDir $installDir)
+          $remainingEntries = @(Get-VideoCaptionerUninstallEntries -Roots $uninstallRoots -InstallDir $installDir)
           if ($remainingEntries.Count -ne 0) {
             throw "Expected zero matching uninstall entries after uninstall, found $($remainingEntries.Count)"
           }

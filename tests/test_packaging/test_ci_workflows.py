@@ -136,7 +136,7 @@ def test_windows_installer_smoke_checks_all_matching_uninstall_registry_views() 
     ]
 
     finder_match = re.search(
-        r"(?ms)^          function Get-MatchingUninstallEntries \{\n"
+        r"(?ms)^          function Get-VideoCaptionerUninstallEntries \{\n"
         r"(?P<body>.*?)"
         r"^          \}\n\n"
         r"^          \$installerArguments =",
@@ -144,8 +144,23 @@ def test_windows_installer_smoke_checks_all_matching_uninstall_registry_views() 
     )
     assert finder_match, "uninstall registry matching helper not found"
     finder = finder_match.group("body")
-    assert "Test-Path -LiteralPath $root" in finder
-    assert "Get-ChildItem -LiteralPath $root" in finder
+    registry_reads = re.search(
+        r"(?m)^              if \(-not \(Test-Path -LiteralPath \$root "
+        r"-ErrorAction Stop\)\) \{ continue \}\n\n"
+        r"^              foreach \(\$key in \(Get-ChildItem -LiteralPath \$root "
+        r"-ErrorAction Stop\)\) \{\n"
+        r"^                \$entry = Get-ItemProperty -LiteralPath \$key\.PSPath "
+        r"-ErrorAction Stop\n"
+        r"^                if \(\$null -eq \$entry\) \{\n"
+        r'^                  throw "Registry property read returned no entry for '
+        r'\$\(\$key\.PSPath\)"\n'
+        r"^                \}$",
+        finder,
+    )
+    assert registry_reads, "registry enumeration and reads must fail closed"
+    assert finder.index("try {") > registry_reads.end()
+    assert "SilentlyContinue" not in finder
+    assert "SilentlyContinue" not in smoke
     assert '$entry.DisplayName -eq "VideoCaptioner-Mod"' in finder
     assert "IsNullOrWhiteSpace([string]$entry.InstallLocation)" in finder
     assert "[System.IO.Path]::GetFullPath($InstallDir)" in finder
@@ -156,24 +171,42 @@ def test_windows_installer_smoke_checks_all_matching_uninstall_registry_views() 
     )
     assert finder.count(".TrimEnd($pathSeparators)") == 2
     assert "[System.StringComparer]::OrdinalIgnoreCase.Equals(" in finder
-    assert "RegistryPath = $key.PSPath" in finder
+    assert re.search(
+        r"(?m)^                  \[PSCustomObject\]@\{\n"
+        r"^                    RegistryPath\s+= \$key\.PSPath\n"
+        r"^                    InstallLocation = \$normalizedEntryInstallDir\n"
+        r"^                  \}$",
+        finder,
+    ), "matching object must retain its normalized registry InstallLocation"
 
     registry_call = (
-        "@(Get-MatchingUninstallEntries -Roots $uninstallRoots -InstallDir $installDir)"
+        "@(Get-VideoCaptionerUninstallEntries -Roots $uninstallRoots "
+        "-InstallDir $installDir)"
     )
     assert smoke.count(registry_call) == 2
-    assert re.search(
-        r"(?ms)\$uninstallEntries = "
+    post_install_check = re.search(
+        r"(?ms)\$postInstallMatches = "
         + re.escape(registry_call)
         + r"\n"
-        r"          if \(\$uninstallEntries\.Count -ne 1\) \{\n"
+        r"          if \(\$postInstallMatches\.Count -ne 1\) \{\n"
         r"            throw \"Expected exactly one matching uninstall entry, found "
-        r"\$\(\$uninstallEntries\.Count\)\"\n"
+        r"\$\(\$postInstallMatches\.Count\)\"\n"
         r"          \}\n"
         r"          Write-Host \"Matched uninstall registry entry: "
-        r"\$\(\$uninstallEntries\[0\]\.RegistryPath\)\"",
+        r"\$\(\$postInstallMatches\[0\]\.RegistryPath\)\"",
         smoke,
     )
+    assert post_install_check, "post-install registry match must be unique"
+
+    uninstaller_line = (
+        "          $uninstaller = Join-Path -Path "
+        '($postInstallMatches[0].InstallLocation) -ChildPath "unins000.exe"'
+    )
+    assert re.findall(r"(?m)^          \$uninstaller = .*$", smoke) == [
+        uninstaller_line
+    ]
+    assert smoke.count('"unins000.exe"') == 1
+    assert smoke.index(uninstaller_line) > post_install_check.end()
 
     cleanup_check = (
         'if (Test-Path $installDir) { throw "Install directory remains after uninstall: '
