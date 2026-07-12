@@ -115,3 +115,79 @@ def test_windows_installer_smoke_waits_for_checked_gui_processes() -> None:
         '$uninstallerArguments = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")'
         in smoke
     )
+
+
+def test_windows_installer_smoke_checks_all_matching_uninstall_registry_views() -> None:
+    workflow = DESKTOP_WORKFLOW.read_text(encoding="utf-8")
+    smoke = _step(workflow, "Smoke test silent install and uninstall")
+    roots_match = re.search(
+        r"(?ms)^          \$uninstallRoots = @\(\n"
+        r"(?P<body>.*?)"
+        r"^          \)\n",
+        smoke,
+    )
+
+    assert roots_match, "uninstall registry roots not found"
+    assert re.findall(r'(?m)^            "([^"]+)"$', roots_match.group("body")) == [
+        r"HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+    ]
+
+    finder_match = re.search(
+        r"(?ms)^          function Get-MatchingUninstallEntries \{\n"
+        r"(?P<body>.*?)"
+        r"^          \}\n\n"
+        r"^          \$installerArguments =",
+        smoke,
+    )
+    assert finder_match, "uninstall registry matching helper not found"
+    finder = finder_match.group("body")
+    assert "Test-Path -LiteralPath $root" in finder
+    assert "Get-ChildItem -LiteralPath $root" in finder
+    assert '$entry.DisplayName -eq "VideoCaptioner-Mod"' in finder
+    assert "IsNullOrWhiteSpace([string]$entry.InstallLocation)" in finder
+    assert "[System.IO.Path]::GetFullPath($InstallDir)" in finder
+    assert re.search(
+        r"\[System\.IO\.Path\]::GetFullPath\(\s*"
+        r"\[string\]\$entry\.InstallLocation\s*\)",
+        finder,
+    )
+    assert finder.count(".TrimEnd($pathSeparators)") == 2
+    assert "[System.StringComparer]::OrdinalIgnoreCase.Equals(" in finder
+    assert "RegistryPath = $key.PSPath" in finder
+
+    registry_call = (
+        "@(Get-MatchingUninstallEntries -Roots $uninstallRoots -InstallDir $installDir)"
+    )
+    assert smoke.count(registry_call) == 2
+    assert re.search(
+        r"(?ms)\$uninstallEntries = "
+        + re.escape(registry_call)
+        + r"\n"
+        r"          if \(\$uninstallEntries\.Count -ne 1\) \{\n"
+        r"            throw \"Expected exactly one matching uninstall entry, found "
+        r"\$\(\$uninstallEntries\.Count\)\"\n"
+        r"          \}\n"
+        r"          Write-Host \"Matched uninstall registry entry: "
+        r"\$\(\$uninstallEntries\[0\]\.RegistryPath\)\"",
+        smoke,
+    )
+
+    cleanup_check = (
+        'if (Test-Path $installDir) { throw "Install directory remains after uninstall: '
+        '$installDir" }'
+    )
+    remaining_call = "$remainingEntries = " + registry_call
+    assert smoke.index(cleanup_check) < smoke.index(remaining_call)
+    assert re.search(
+        r"(?ms)\$remainingEntries = "
+        + re.escape(registry_call)
+        + r"\n"
+        r"          if \(\$remainingEntries\.Count -ne 0\) \{\n"
+        r"            throw \"Expected zero matching uninstall entries after uninstall, found "
+        r"\$\(\$remainingEntries\.Count\)\"\n"
+        r"          \}",
+        smoke,
+    )

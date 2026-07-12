@@ -96,6 +96,55 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP "VideoCaptioner-installed"
           if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
 
+          $uninstallRoots = @(
+            "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+            "HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+            "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+            "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+          )
+
+          function Get-MatchingUninstallEntries {
+            param(
+              [string[]]$Roots,
+              [string]$InstallDir
+            )
+
+            $pathSeparators = [char[]]@(
+              [System.IO.Path]::DirectorySeparatorChar,
+              [System.IO.Path]::AltDirectorySeparatorChar
+            )
+            $normalizedInstallDir = [System.IO.Path]::GetFullPath($InstallDir).TrimEnd($pathSeparators)
+
+            foreach ($root in $Roots) {
+              if (-not (Test-Path -LiteralPath $root)) { continue }
+
+              foreach ($key in (Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+                $entry = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
+                if ($null -eq $entry) { continue }
+                $displayNameMatches = $entry.DisplayName -eq "VideoCaptioner-Mod"
+                if (-not $displayNameMatches) { continue }
+                if ([string]::IsNullOrWhiteSpace([string]$entry.InstallLocation)) { continue }
+
+                try {
+                  $normalizedEntryInstallDir = [System.IO.Path]::GetFullPath(
+                    [string]$entry.InstallLocation
+                  ).TrimEnd($pathSeparators)
+                } catch {
+                  continue
+                }
+
+                if ([System.StringComparer]::OrdinalIgnoreCase.Equals(
+                  $normalizedEntryInstallDir,
+                  $normalizedInstallDir
+                )) {
+                  [PSCustomObject]@{
+                    RegistryPath = $key.PSPath
+                  }
+                }
+              }
+            }
+          }
+
           $installerArguments = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=$installDir")
           Invoke-CheckedProcess -Executable $installer.FullName -ArgumentList $installerArguments -Description "Installer"
 
@@ -104,10 +153,11 @@ jobs:
           $exe = Join-Path $installDir "VideoCaptioner.exe"
           if (-not (Test-Path $exe)) { throw "Installed executable not found: $exe" }
 
-          $uninstallRoot = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
-          $uninstallEntry = Get-ChildItem $uninstallRoot | Get-ItemProperty |
-            Where-Object { $_.DisplayName -eq "VideoCaptioner-Mod" } | Select-Object -First 1
-          if (-not $uninstallEntry) { throw "VideoCaptioner-Mod uninstall entry was not registered" }
+          $uninstallEntries = @(Get-MatchingUninstallEntries -Roots $uninstallRoots -InstallDir $installDir)
+          if ($uninstallEntries.Count -ne 1) {
+            throw "Expected exactly one matching uninstall entry, found $($uninstallEntries.Count)"
+          }
+          Write-Host "Matched uninstall registry entry: $($uninstallEntries[0].RegistryPath)"
 
           $versionOutput = & $exe --version 2>&1
           if ($LASTEXITCODE -ne 0) { throw "Installed --version check failed" }
@@ -125,9 +175,10 @@ jobs:
             Start-Sleep -Milliseconds 500
           }
           if (Test-Path $installDir) { throw "Install directory remains after uninstall: $installDir" }
-          $remainingEntry = Get-ChildItem $uninstallRoot | Get-ItemProperty |
-            Where-Object { $_.DisplayName -eq "VideoCaptioner-Mod" } | Select-Object -First 1
-          if ($remainingEntry) { throw "VideoCaptioner-Mod uninstall entry remains after uninstall" }
+          $remainingEntries = @(Get-MatchingUninstallEntries -Roots $uninstallRoots -InstallDir $installDir)
+          if ($remainingEntries.Count -ne 0) {
+            throw "Expected zero matching uninstall entries after uninstall, found $($remainingEntries.Count)"
+          }
 
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v7
