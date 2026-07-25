@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.8
+
+- Unified Bcut upload, task creation, and result polling on model `8`.
+- Made Bcut result polling recover from HTTP `412`, rate limits, temporary server failures,
+  timeouts, and transport interruptions while preserving the existing ten-minute deadline and
+  task ID.
+- Sanitized Bcut HTTP and transport failures so task IDs, request URLs, and low-level connection
+  details are not exposed in errors or retry logs.
+- Prevented GUI startup events received during base-window construction from accessing
+  `stackedWidget` before it is initialized.
+
 ## 0.0.7
 
 - Fixed packaged `doctor` detection so bundled `ffmpeg` and `ffprobe` are recognized without relying on the host `PATH`.
