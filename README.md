@@ -6,9 +6,9 @@
   [PRD](docs/PRD-0.0.6.md) · [CLI 使用](#cli-命令行) · [GUI 桌面版](#gui-桌面版) · [Release](https://github.com/bsbofmusic/VideoCaptioner-Mod/releases)
 </div>
 
-## VideoCaptioner-Mod 0.0.7
+## VideoCaptioner-Mod 0.0.8
 
-0.0.7 是一次发布硬化版本：默认安装缩减为无 GUI 的 CLI 核心，桌面、GPU 检测和 Edge TTS 改为按需 extras；同时加入 Bcut 请求超时、旧字幕样式名称兼容、Windows Inno 安装包，以及经过完整质量门禁的 GitHub Release 资产。
+0.0.8 修复了必剪语音识别和 GUI 启动的稳定性问题：上传、任务创建和结果查询统一使用模型 `8`；结果轮询遇到 `412`、限流、临时服务端错误、超时或网络中断时，会在原任务和十分钟总期限内重试；错误与日志不再暴露任务 ID 和请求 URL；GUI 在基础窗口初始化阶段收到事件时也不会提前访问尚未创建的 `stackedWidget`。0.0.7 的轻量 CLI、按需 extras、旧字幕样式兼容和桌面发布资产继续保留。
 
 Mod 保留的主要功能：Codex Responses API provider、Anthropic/MiniMax Messages API provider、字幕校对独立并发/批次/超时/重试设置、校对子进程防卡死、GUI 拖拽兜底、批处理路径预检、Mod 独立 AppData 名称与仓库链接。
 
@@ -18,7 +18,7 @@ Mod 保留的主要功能：Codex Responses API provider、Anthropic/MiniMax Mes
 
 ```bash
 # 从 GitHub Release 下载 wheel 后安装；本 Mod 不自动发布到 PyPI
-WHEEL=./videocaptioner-0.0.7-py3-none-any.whl
+WHEEL=./videocaptioner-0.0.8-py3-none-any.whl
 
 # 轻量 CLI 核心（不安装 PyQt、modelscope、GPU 检测或 Edge TTS）
 python -m pip install "$WHEEL"
@@ -88,7 +88,7 @@ videocaptioner config set subtitle.retry_count 3
 ## GUI 桌面版
 
 ```bash
-python -m pip install './videocaptioner-0.0.7-py3-none-any.whl[gui]'
+python -m pip install './videocaptioner-0.0.8-py3-none-any.whl[gui]'
 videocaptioner-gui                  # 显式打开桌面版
 videocaptioner gui                  # 等价命令
 videocaptioner                      # 无参数时也会打开桌面版

@@ -1,7 +1,10 @@
 """Unit tests for Bcut request timeout and response behavior."""
 
 import json
-from typing import Any, Callable
+import logging
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from typing import Any, Callable, cast
 
 import httpx
 import pytest
@@ -34,14 +37,41 @@ class FakeResponse:
 class FakeClient:
     def __init__(
         self,
-        handler: Callable[[str, str, dict[str, Any]], FakeResponse],
+        handler: Callable[[str, str, dict[str, Any]], Any],
     ) -> None:
         self.handler = handler
         self.calls: list[tuple[str, str, dict[str, Any]]] = []
 
-    def request(self, method: str, url: str, **kwargs: Any) -> FakeResponse:
+    def request(self, method: str, url: str, **kwargs: Any) -> Any:
         self.calls.append((method, url, kwargs))
         return self.handler(method, url, kwargs)
+
+
+def _http_response(
+    status_code: int,
+    *,
+    headers: dict[str, str] | None = None,
+    payload: dict[str, Any] | None = None,
+) -> httpx.Response:
+    request = httpx.Request("GET", "https://example.invalid/task/result?task_id=secret-task")
+    return httpx.Response(
+        status_code,
+        headers=headers,
+        json=payload,
+        request=request,
+    )
+
+
+def _next_outcome(outcomes: Any) -> Callable[[str, str, dict[str, Any]], Any]:
+    iterator = iter(outcomes)
+
+    def handler(_method: str, _url: str, _kwargs: dict[str, Any]) -> Any:
+        outcome = next(iterator)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    return handler
 
 
 def _make_asr(client: FakeClient) -> BcutASR:
@@ -192,7 +222,7 @@ def test_result_polling_uses_client_and_request_timeout_and_returns_data() -> No
             "GET",
             API_QUERY_RESULT,
             {
-                "params": {"model_id": 7, "task_id": "stored-task"},
+                "params": {"model_id": "8", "task_id": "stored-task"},
                 "headers": asr.headers,
                 "timeout": REQUEST_TIMEOUT,
             },
@@ -213,12 +243,236 @@ def test_timeout_failure_is_clear_and_does_not_echo_transport_details() -> None:
 
     assert "credential" not in str(exc_info.value)
     assert exc_info.value.__cause__ is None
+    assert exc_info.value.__context__ is None
+
+
+def test_http_failure_does_not_expose_task_id_or_request_url() -> None:
+    asr = _make_asr(FakeClient(lambda _method, _url, _kwargs: _http_response(403)))
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        asr.result("secret-task")
+
+    error = exc_info.value
+    assert "secret-task" not in str(error)
+    assert "task/result?" not in str(error)
+    assert "secret-task" not in str(error.request.url)
+    assert "secret-task" not in str(error.response.request.url)
+    assert error.__context__ is None
+
+
+def test_transport_failure_does_not_expose_transport_details() -> None:
+    def handler(_method: str, _url: str, _kwargs: dict[str, Any]) -> FakeResponse:
+        raise httpx.ConnectError("credential=do-not-leak")
+
+    asr = _make_asr(FakeClient(handler))
+
+    with pytest.raises(RuntimeError, match="Bcut result request failed due to transport error") as exc_info:
+        asr.result("secret-task")
+
+    assert "credential" not in str(exc_info.value)
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__context__ is None
 
 
 def _prepare_run(asr: BcutASR, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(asr, "_check_rate_limit", lambda: None)
     monkeypatch.setattr(asr, "upload", lambda: None)
     monkeypatch.setattr(asr, "create_task", lambda: "task-123")
+
+
+def test_run_retries_result_412_with_same_task_and_completes(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    outcomes = iter(
+        [
+            _http_response(412, headers={"Retry-After": "5"}),
+            _http_response(
+                200,
+                payload={"data": {"state": 4, "result": '{"utterances": []}'}},
+            ),
+        ]
+    )
+    client = FakeClient(lambda _method, _url, _kwargs: next(outcomes))
+    asr = _make_asr(client)
+    _prepare_run(asr, monkeypatch)
+    asr.task_id = "task-123"
+    clock = [0.0]
+    sleeps: list[float] = []
+
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.time.monotonic", lambda: clock[0])
+
+    def sleep(delay: float) -> None:
+        sleeps.append(delay)
+        clock[0] += delay
+
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.time.sleep", sleep)
+
+    with caplog.at_level(logging.WARNING, logger="videocaptioner.core.asr.bcut"):
+        assert asr._run() == {"utterances": []}
+
+    assert sleeps == [5.0]
+    assert len(client.calls) == 2
+    assert all(
+        kwargs["params"] == {"model_id": "8", "task_id": "task-123"}
+        for _method, _url, kwargs in client.calls
+    )
+    assert "status=412 attempt=1 delay=5" in caplog.text
+    assert "task-123" not in caplog.text
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+def test_run_retries_other_transient_result_statuses(
+    status: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeClient(
+        _next_outcome(
+            [
+                _http_response(status),
+                _http_response(
+                    200,
+                    payload={"data": {"state": 4, "result": '{"utterances": []}'}},
+                ),
+            ]
+        )
+    )
+    asr = _make_asr(client)
+    _prepare_run(asr, monkeypatch)
+    asr.task_id = "task-123"
+    clock = [0.0]
+    sleeps: list[float] = []
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.time.monotonic", lambda: clock[0])
+
+    def sleep(delay: float) -> None:
+        sleeps.append(delay)
+        clock[0] += delay
+
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.time.sleep", sleep)
+
+    assert asr._run() == {"utterances": []}
+    assert sleeps == [2.0]
+    assert len(client.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "failure,expected_status",
+    [
+        (httpx.ReadTimeout("credential=do-not-leak"), "timeout"),
+        (httpx.ConnectError("credential=do-not-leak"), "transport"),
+    ],
+)
+def test_run_retries_result_transport_failures_without_logging_details(
+    failure: httpx.TransportError,
+    expected_status: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client = FakeClient(
+        _next_outcome(
+            [
+                failure,
+                _http_response(
+                    200,
+                    payload={"data": {"state": 4, "result": '{"utterances": []}'}},
+                ),
+            ]
+        )
+    )
+    asr = _make_asr(client)
+    _prepare_run(asr, monkeypatch)
+    asr.task_id = "task-123"
+    clock = [0.0]
+    sleeps: list[float] = []
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.time.monotonic", lambda: clock[0])
+
+    def sleep(delay: float) -> None:
+        sleeps.append(delay)
+        clock[0] += delay
+
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.time.sleep", sleep)
+
+    with caplog.at_level(logging.WARNING, logger="videocaptioner.core.asr.bcut"):
+        assert asr._run() == {"utterances": []}
+
+    assert sleeps == [2.0]
+    assert f"status={expected_status}" in caplog.text
+    assert "credential" not in caplog.text
+    assert "task-123" not in caplog.text
+
+
+def test_run_persistent_412_stops_at_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeClient(lambda _method, _url, _kwargs: _http_response(412))
+    asr = _make_asr(client)
+    _prepare_run(asr, monkeypatch)
+    asr.task_id = "task-123"
+    clock = [0.0]
+    sleeps: list[float] = []
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.time.monotonic", lambda: clock[0])
+
+    def sleep(delay: float) -> None:
+        sleeps.append(delay)
+        clock[0] += delay
+
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.time.sleep", sleep)
+
+    with pytest.raises(RuntimeError, match="Bcut ASR polling exceeded the 600-second deadline"):
+        asr._run()
+
+    assert sleeps[:4] == [2.0, 5.0, 10.0, 20.0]
+    assert sum(sleeps) == POLLING_DEADLINE_SECONDS
+    assert len(client.calls) == len(sleeps)
+
+
+def test_run_non_retryable_http_status_fails_once_and_stays_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeClient(lambda _method, _url, _kwargs: _http_response(403))
+    asr = _make_asr(client)
+    _prepare_run(asr, monkeypatch)
+    asr.task_id = "secret-task"
+    sleeps: list[float] = []
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.time.monotonic", lambda: 0.0)
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.time.sleep", sleeps.append)
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        asr._run()
+
+    assert len(client.calls) == 1
+    assert sleeps == []
+    assert "secret-task" not in str(exc_info.value)
+    assert "task/result?" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("length", [20, 309, 4301])
+def test_retry_after_caps_arbitrarily_long_ascii_decimals(length: int) -> None:
+    response = _http_response(412, headers={"Retry-After": "9" * length})
+
+    assert BcutASR._retry_after_seconds(response) == 60.0
+
+
+def test_retry_after_parses_http_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FrozenDatetime:
+        @staticmethod
+        def now(tz: timezone) -> datetime:
+            assert tz is timezone.utc
+            return datetime(2026, 7, 25, 14, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr("videocaptioner.core.asr.bcut.datetime", FrozenDatetime)
+    response = _http_response(
+        412,
+        headers={"Retry-After": "Sat, 25 Jul 2026 14:00:30 GMT"},
+    )
+
+    assert BcutASR._retry_after_seconds(response) == 30.0
+
+
+@pytest.mark.parametrize("retry_after", ["１２", "١٢", "²"])
+def test_retry_after_rejects_non_ascii_digit_values(retry_after: str) -> None:
+    assert retry_after.isdigit()
+    response = cast(httpx.Response, SimpleNamespace(headers={"Retry-After": retry_after}))
+
+    assert BcutASR._retry_after_seconds(response) is None
 
 
 def test_run_preserves_successful_polling_and_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -238,8 +492,10 @@ def test_run_preserves_successful_polling_and_parsing(monkeypatch: pytest.Monkey
         task_id: str | None = None,
         *,
         timeout: httpx.Timeout = REQUEST_TIMEOUT,
+        _retry_transport: bool = False,
     ) -> dict[str, Any]:
         assert task_id is None
+        assert _retry_transport is True
         result_timeouts.append(timeout)
         return next(responses)
 
@@ -273,8 +529,10 @@ def test_run_stops_at_monotonic_deadline_and_caps_request_and_sleep(
         task_id: str | None = None,
         *,
         timeout: httpx.Timeout = REQUEST_TIMEOUT,
+        _retry_transport: bool = False,
     ) -> dict[str, Any]:
         assert task_id is None
+        assert _retry_transport is True
         result_timeouts.append(timeout)
         return {"state": 1, "result": ""}
 
@@ -304,8 +562,10 @@ def test_run_rejects_result_that_arrives_after_hard_deadline(
         task_id: str | None = None,
         *,
         timeout: httpx.Timeout = REQUEST_TIMEOUT,
+        _retry_transport: bool = False,
     ) -> dict[str, Any]:
         assert task_id is None
+        assert _retry_transport is True
         result_timeouts.append(timeout)
         return {"state": 4, "result": '{"utterances": []}'}
 

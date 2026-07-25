@@ -4,7 +4,7 @@
 
 ```bash
 # 先从 GitHub Release 下载 wheel；本 Mod 不自动发布到 PyPI
-WHEEL=./videocaptioner-0.0.7-py3-none-any.whl
+WHEEL=./videocaptioner-0.0.8-py3-none-any.whl
 python -m pip install "$WHEEL"             # 轻量 CLI 核心
 python -m pip install "${WHEEL}[gui]"      # GUI 桌面版
 python -m pip install "${WHEEL}[dubbing]"  # Edge TTS 配音

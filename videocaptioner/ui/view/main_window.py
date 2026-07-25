@@ -209,7 +209,10 @@ class MainWindow(FluentWindow):
             event.ignore()
 
     def eventFilter(self, obj, event):
-        if obj is self.stackedWidget and event.type() in (
+        stacked_widget = getattr(self, "stackedWidget", None)
+        if stacked_widget is None:
+            return super().eventFilter(obj, event)
+        if obj is stacked_widget and event.type() in (
             QEvent.DragEnter,
             QEvent.DragMove,
             QEvent.Drop,
