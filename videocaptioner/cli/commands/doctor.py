@@ -147,7 +147,7 @@ def _check_subtitle(config: dict) -> list[Check]:
     checks: list[Check] = []
     optimize = bool(get(config, "subtitle.optimize", True))
     split = bool(get(config, "subtitle.split", True))
-    translator = get(config, "translate.service", "bing")
+    translator = get(config, "translate.service", "google")
     needs_llm = optimize or split or translator == "llm"
     checks.append(Check("subtitle.processing", "ok", f"ai_polish={optimize}, split={split}, translator={translator}"))
     if needs_llm and not get(config, "llm.api_key", ""):

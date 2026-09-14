@@ -132,7 +132,7 @@ def _interactive_init(args: Namespace, config_data: dict) -> int:
         _set_nested(config_data, "transcribe.asr", _prompt("ASR engine [bijian]: ", "bijian"))
         _set_nested(config_data, "subtitle.optimize", _yes_no("Enable AI subtitle polish? It fixes obvious ASR errors and punctuation. [Y/n]: ", True))
         _set_nested(config_data, "subtitle.split", _yes_no("Enable subtitle re-segmentation? [Y/n]: ", True))
-        translator = _prompt("Translator [bing] (bing/google/llm): ", "bing")
+        translator = _prompt("Translator [google] (google/llm/bing): ", "google")
         _set_nested(config_data, "translate.service", translator)
         print()
         print("LLM config is used for AI subtitle polish, LLM translation, and --adapt-length.")
@@ -163,7 +163,7 @@ def _yes_no(prompt: str, default: bool) -> bool:
 def _build_onboarding_config(args: Namespace) -> dict:
     config_data = deepcopy(DEFAULTS)
     profile = getattr(args, "profile", "basic")
-    _set_nested(config_data, "translate.service", "bing")
+    _set_nested(config_data, "translate.service", "google")
     _set_nested(config_data, "dubbing.preset", "siliconflow-cn-female" if profile == "dubbing" else "")
     _set_nested(config_data, "dubbing.voice", "anna")
     _set_nested(config_data, "dubbing.timing", "balanced")

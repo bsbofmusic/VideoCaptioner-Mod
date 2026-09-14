@@ -9,7 +9,7 @@
   - Adds bounded connect/read/write/pool timeouts and a 600-second healthy-task deadline.
   - Uses short bounded retries for 412/429, bounded retries for 5xx/timeout/transport failures, capped `Retry-After`, and sanitized errors.
 - JianYing now keeps the same fresh local quota behavior while treating its remote signing service as an explicit external dependency. Persistent 429/5xx/transport failures use short bounded retries and return an actionable Bcut fallback instead of hanging or leaking endpoint details.
-- The retired Bing Edge free-auth endpoint now fails with a clear Google/LLM fallback message instead of a raw 404 traceback.
+- The retired Bing Edge free-auth endpoint now fails with a clear Google/LLM fallback message instead of a raw 404 traceback, and the built-in/default onboarding translator is now Google rather than the retired Bing path.
 - Keeps the lightweight CLI-first packaging from v0.0.7: GUI dependencies remain behind the `gui` extra, package resources are read-only, and user data stays in writable platform directories.
 - Preserves small v0.0.7 compatibility wins: bundled `ffmpeg`/`ffprobe` doctor discovery and legacy subtitle style aliases (`毕导科普风`, `番剧可爱风`, `竖屏`).
 - Intentionally drops the old Mod-only Codex/Anthropic proofreading providers, proofreading worker/process isolation, and other subtitle-proofreading fork complexity. Upstream v1.4.2 is the source of truth for those general features.

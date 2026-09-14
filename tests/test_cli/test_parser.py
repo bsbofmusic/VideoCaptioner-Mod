@@ -234,6 +234,7 @@ class TestConfigParser:
         result = main(["config", "init", "--non-interactive", "--print-template", "--profile", "dubbing"])
         assert result == EXIT.SUCCESS
         out = capsys.readouterr().out
+        assert 'service = "google"' in out
         assert "[dubbing]" in out
         assert "siliconflow-cn-female" in out
         assert "audio_mode" in out

@@ -128,6 +128,7 @@ class TestBuildConfig:
     def test_defaults_only(self):
         config = build_config(config_path=None)
         assert config["llm"]["model"] == DEFAULTS["llm"]["model"]
+        assert config["translate"]["service"] == "google"
 
     def test_cli_overrides(self):
         config = build_config(cli_overrides={"llm": {"model": "custom"}})

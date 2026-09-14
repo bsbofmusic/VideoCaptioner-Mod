@@ -3,10 +3,11 @@
 ## 安装
 
 ```bash
-pip install videocaptioner          # CLI + GUI 桌面版
+pip install videocaptioner          # 轻量 CLI core
+pip install 'videocaptioner[gui]'   # 需要 GUI 时再安装桌面依赖
 ```
 
-免费功能（转录、必应/谷歌翻译）无需任何配置，安装后直接使用。
+Bcut/必剪转录与 Google 翻译无需 LLM Key；旧 Bing Edge 免费认证端点已退役，不作为默认路径。
 需要桌面版时运行 `videocaptioner-gui`、`videocaptioner gui`，或直接运行无参数的 `videocaptioner`。
 
 ---
@@ -17,11 +18,11 @@ pip install videocaptioner          # CLI + GUI 桌面版
 # 语音转字幕（免费）
 videocaptioner transcribe video.mp4 --asr bijian
 
-# 翻译字幕（免费必应翻译）
-videocaptioner subtitle input.srt --translator bing --target-language en
+# 翻译字幕（免费 Google 翻译）
+videocaptioner subtitle input.srt --translator google --target-language en
 
 # 全流程：转录 → 优化 → 翻译 → 合成
-videocaptioner process video.mp4 --asr bijian --translator bing --target-language ja
+videocaptioner process video.mp4 --asr bijian --translator google --target-language ja
 
 # 给视频加字幕
 videocaptioner synthesize video.mp4 -s subtitle.srt --subtitle-mode hard
@@ -30,7 +31,7 @@ videocaptioner synthesize video.mp4 -s subtitle.srt --subtitle-mode hard
 videocaptioner dub subtitle.srt --preset siliconflow-cn-female -o dub.wav
 
 # 全流程：视频 → 转录 → 翻译 → 配音视频
-videocaptioner process video.mp4 --translator bing --to zh-Hans \
+videocaptioner process video.mp4 --translator google --to zh-Hans \
   --dub-only --preset siliconflow-cn-female
 ```
 
@@ -75,7 +76,7 @@ videocaptioner subtitle <字幕文件> [选项]
 
 | 选项 | 说明 |
 |------|------|
-| `--translator` | 翻译服务：`llm`(默认) `bing`(免费) `google`(免费) |
+| `--translator` | 翻译服务：`google`(默认,免费) `llm` `bing`(旧兼容) |
 | `--target-language CODE` | 目标语言 BCP 47 代码：`zh-Hans` `en` `ja` `ko` `fr` `de` 等 |
 | `--no-optimize` | 跳过优化 |
 | `--no-translate` | 跳过翻译 |
@@ -204,7 +205,7 @@ videocaptioner process <音视频文件> [选项]
 # 英文视频配成中文视频
 videocaptioner process talk.mp4 \
   --asr bijian \
-  --translator bing --to zh-Hans \
+  --translator google --to zh-Hans \
   --dub-only \
   --preset siliconflow-cn-female \
   --tts-api-key "$VIDEOCAPTIONER_TTS_API_KEY" \
@@ -212,7 +213,7 @@ videocaptioner process talk.mp4 \
 
 # 中文视频配成英文视频
 videocaptioner process input.mp4 \
-  --translator bing --to en \
+  --translator google --to en \
   --dub-only \
   --preset gemini-en-friendly \
   --tts-api-key "$VIDEOCAPTIONER_TTS_API_KEY"
@@ -304,7 +305,7 @@ videocaptioner doctor
 
 ```bash
 videocaptioner config init --non-interactive --profile dubbing \
-  --translator bing \
+  --translator google \
   --dub-preset siliconflow-cn-female \
   --timing balanced --audio-mode replace
 ```
@@ -323,7 +324,7 @@ optimize = true
 split = true
 
 [translate]
-service = "bing"
+service = "google"
 
 [dubbing]
 preset = "siliconflow-cn-female"

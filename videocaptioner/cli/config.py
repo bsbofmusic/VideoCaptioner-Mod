@@ -99,7 +99,7 @@ DEFAULTS: Dict[str, Any] = {
         "batch_size": 20,
     },
     "translate": {
-        "service": "bing",
+        "service": "google",
         "target_language": "zh-Hans",
         "reflect": False,
         "deeplx_endpoint": "",

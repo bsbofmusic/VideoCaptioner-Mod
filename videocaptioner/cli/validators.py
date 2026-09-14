@@ -177,7 +177,7 @@ def validate_subtitle(config: dict) -> bool:
 
     optimize = get(config, "subtitle.optimize", True)
     translate = get(config, "subtitle.translate", False)
-    translator = get(config, "translate.service", "bing")
+    translator = get(config, "translate.service", "google")
 
     if optimize:
         needs_llm = True
