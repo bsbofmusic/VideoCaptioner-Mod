@@ -3,7 +3,7 @@
 import atexit
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, cast
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 from videocaptioner.core.entities import SubtitleProcessData
@@ -132,7 +132,7 @@ class BaseTranslator(ABC):
                 cached_result = None
                 self._cache.delete(cache_key)
             if cached_result is not None:
-                return cached_result
+                return cast(List[SubtitleProcessData], cached_result)
 
             result = self._translate_chunk(chunk)
 

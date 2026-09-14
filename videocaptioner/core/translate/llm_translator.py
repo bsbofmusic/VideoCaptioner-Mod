@@ -116,6 +116,7 @@ class LLMTranslator(BaseTranslator):
                 response_dict, subtitle_dict
             )
             if is_valid:
+                assert isinstance(response_dict, dict)
                 return response_dict
             else:
                 messages.append(
