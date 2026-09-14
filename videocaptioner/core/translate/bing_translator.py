@@ -39,15 +39,30 @@ class BingTranslator(BaseTranslator):
         self._init_session()
 
     def _init_session(self):
-        """初始化会话，获取必要的token"""
+        """Initialize the legacy free Edge translation session when still available."""
         try:
             response = self.session.get(self.auth_endpoint, timeout=self.timeout)
+        except requests.RequestException:
+            raise RuntimeError(
+                "Bing free translation authentication is unavailable; use Google or LLM translation"
+            ) from None
+
+        if response.status_code == 404:
+            raise RuntimeError(
+                "Bing free Edge translation authentication has been retired (HTTP 404); "
+                "use Google or LLM translation"
+            )
+
+        try:
             response.raise_for_status()
-            self.auth_token = response.text
-            self.headers["authorization"] = f"Bearer {self.auth_token}"
-        except Exception as e:
-            logger.error(f"Failed to init Bing session: {str(e)}")
-            raise RuntimeError(f"Failed to init Bing session: {str(e)}")
+        except requests.RequestException:
+            raise RuntimeError(
+                f"Bing free translation authentication failed with HTTP {response.status_code}; "
+                "use Google or LLM translation"
+            ) from None
+
+        self.auth_token = response.text
+        self.headers["authorization"] = f"Bearer {self.auth_token}"
 
     def _translate_chunk(
         self, subtitle_chunk: List[SubtitleProcessData]

@@ -53,11 +53,9 @@ class LogDetailDialog(MessageBoxBase):
         duration = self.log_entry.get("duration_ms", 0) / 1000
         stage = self.log_entry.get("stage", "") or "-"
 
-        usage = self.log_entry.get("response", {}).get("usage") or {}
-        prompt_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))
-        completion_tokens = usage.get(
-            "completion_tokens", usage.get("output_tokens", 0)
-        )
+        usage = self.log_entry.get("response", {}).get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
 
         # 顶部信息栏
         info_row = QHBoxLayout()
@@ -408,10 +406,7 @@ class LLMLogsInterface(QWidget):
             usage = log.get("response", {}).get("usage") or {}
             total_tokens = usage.get("total_tokens", 0)
             if not total_tokens:
-                total_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))
-                total_tokens += usage.get(
-                    "completion_tokens", usage.get("output_tokens", 0)
-                )
+                total_tokens = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
             self.table.setItem(row, 6, self._create_item(str(total_tokens)))
 
         # 更新分页和统计

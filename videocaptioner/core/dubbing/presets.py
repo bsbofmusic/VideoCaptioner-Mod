@@ -39,17 +39,6 @@ GEMINI_VOICES = {
     "Zubenelgenubi",
 }
 
-EDGE_VOICE_ALIASES = {
-    "xiaoxiao": "zh-CN-XiaoxiaoNeural",
-    "xiaoyi": "zh-CN-XiaoyiNeural",
-    "yunjian": "zh-CN-YunjianNeural",
-    "yunxi": "zh-CN-YunxiNeural",
-    "yunyang": "zh-CN-YunyangNeural",
-    "jenny": "en-US-JennyNeural",
-    "guy": "en-US-GuyNeural",
-    "aria": "en-US-AriaNeural",
-}
-
 
 @dataclass(frozen=True)
 class DubbingPreset:
@@ -110,34 +99,6 @@ PRESETS: dict[str, DubbingPreset] = {
         voice="Puck",
         style_prompt="Read in an upbeat, clear, energetic voice for a video dubbing track.",
     ),
-    "edge-cn-female": DubbingPreset(
-        name="edge-cn-female",
-        provider="edge",
-        api_base="",
-        model="edge-tts",
-        voice=EDGE_VOICE_ALIASES["xiaoxiao"],
-    ),
-    "edge-cn-male": DubbingPreset(
-        name="edge-cn-male",
-        provider="edge",
-        api_base="",
-        model="edge-tts",
-        voice=EDGE_VOICE_ALIASES["yunxi"],
-    ),
-    "edge-en-female": DubbingPreset(
-        name="edge-en-female",
-        provider="edge",
-        api_base="",
-        model="edge-tts",
-        voice=EDGE_VOICE_ALIASES["jenny"],
-    ),
-    "edge-en-male": DubbingPreset(
-        name="edge-en-male",
-        provider="edge",
-        api_base="",
-        model="edge-tts",
-        voice=EDGE_VOICE_ALIASES["guy"],
-    ),
 }
 
 
@@ -169,11 +130,6 @@ def normalize_dubbing_voice(provider: str, model: str, voice: str) -> str:
             if voice.lower() == known.lower():
                 return known
         return voice
-    if provider == "edge":
-        lowered = voice.lower()
-        if lowered in EDGE_VOICE_ALIASES:
-            return EDGE_VOICE_ALIASES[lowered]
-        return voice
     return voice
 
 
@@ -186,11 +142,4 @@ def validate_dubbing_voice(provider: str, voice: str) -> str | None:
         return f"Unknown Gemini voice: {voice}. Available voices: {available}"
     if provider == "siliconflow" and ":" not in voice:
         return "SiliconFlow voice must be a built-in alias or a provider voice ID like model:voice"
-    if provider == "edge":
-        normalized = normalize_dubbing_voice(provider, "", voice)
-        if normalized in EDGE_VOICE_ALIASES.values():
-            return None
-        if not normalized.endswith("Neural") or normalized.count("-") < 2:
-            aliases = ", ".join(sorted(EDGE_VOICE_ALIASES))
-            return f"Edge TTS voice must be a short alias ({aliases}) or a full voice ID like zh-CN-XiaoxiaoNeural"
     return None

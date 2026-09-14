@@ -24,10 +24,11 @@ Thumbs.db
 *.pem
 cookies.txt
 
-# Testing
+# Testing / local engineering indexes
 .pytest_cache/
 .coverage
 htmlcov/
+.codegraph/
 
 # Node.js (docs site)
 node_modules/

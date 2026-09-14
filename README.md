@@ -1,48 +1,28 @@
 <div align="center">
   <img src="./docs/images/logo.png" alt="VideoCaptioner Logo" width="100">
   <h1>VideoCaptioner-Mod</h1>
-  <p>基于官方 VideoCaptioner 最新 master 重建的源码/CLI 版字幕处理工具</p>
+  <p>基于 WEIFENG2333/VideoCaptioner v1.4.2 的轻量 Mod — 保留公版能力，补强 Bcut 可靠性与本地 quota 行为</p>
 
-  [PRD](docs/PRD-0.0.6.md) · [CLI 使用](#cli-命令行) · [GUI 桌面版](#gui-桌面版) · [Release](https://github.com/bsbofmusic/VideoCaptioner-Mod/releases)
+  [在线文档](https://weifeng2333.github.io/VideoCaptioner/) · [CLI 使用](#cli-命令行) · [GUI 桌面版](#gui-桌面版) · [Claude Code Skill](#claude-code-skill)
 </div>
-
-## VideoCaptioner-Mod 0.0.8
-
-0.0.8 修复了必剪语音识别和 GUI 启动的稳定性问题：上传、任务创建和结果查询统一使用模型 `8`；结果轮询遇到 `412`、限流、临时服务端错误、超时或网络中断时，会在原任务和十分钟总期限内重试；错误与日志不再暴露任务 ID 和请求 URL；GUI 在基础窗口初始化阶段收到事件时也不会提前访问尚未创建的 `stackedWidget`。0.0.7 的轻量 CLI、按需 extras、旧字幕样式兼容和桌面发布资产继续保留。
-
-Mod 保留的主要功能：Codex Responses API provider、Anthropic/MiniMax Messages API provider、字幕校对独立并发/批次/超时/重试设置、校对子进程防卡死、GUI 拖拽兜底、批处理路径预检、Mod 独立 AppData 名称与仓库链接。
-
-旧设置中的 `毕导科普风`、`番剧可爱风`、`竖屏` 会自动映射到统一的 `default`、`anime`、`vertical` 预设。统一预设使用随包附带的 `Noto Sans SC`，因此与旧字体相比，换行位置或字形宽度可能有轻微差异。
 
 ## 安装
 
 ```bash
-# 从 GitHub Release 下载 wheel 后安装；本 Mod 不自动发布到 PyPI
-WHEEL=./videocaptioner-0.0.8-py3-none-any.whl
-
-# 轻量 CLI 核心（不安装 PyQt、modelscope、GPU 检测或 Edge TTS）
-python -m pip install "$WHEEL"
-
-# 按需安装功能
-python -m pip install "${WHEEL}[gui]"       # GUI + 桌面/GPU 检测依赖
-python -m pip install "${WHEEL}[dubbing]"  # Edge TTS 配音
-python -m pip install "${WHEEL}[all]"      # 完整功能
+pip install videocaptioner          # 轻量 CLI core
+pip install 'videocaptioner[gui]'   # 需要 GUI 时再装桌面依赖
 ```
 
-免费功能（必剪语音识别、必应/谷歌翻译）**无需任何配置，安装即用**。
-wheel、sdist、Windows 安装包和桌面便携包可从 [GitHub Releases](https://github.com/bsbofmusic/VideoCaptioner-Mod/releases) 下载。
-裸命令 `pip install videocaptioner` 对应的是已有的上游 PyPI 项目，不是本 Mod 的发布渠道。
+v0.0.9 以 **Bcut/必剪** 作为免费 ASR 主路径。本 Mod 会把作者写在客户端里的本地 quota 记录保持为 fresh/full，但不会伪装或绕过真实远端 429。JianYing 仍依赖上游远程签名服务，服务端限流时会快速失败并提示改用 Bcut。Google 翻译可继续免费使用；旧 Bing Edge 免费认证端点已退役，不再宣称可用。
 
 ## CLI 命令行
 
 ```bash
-videocaptioner --version
-
 # 语音转录（免费，无需 API Key）
 videocaptioner transcribe video.mp4 --asr bijian
 
-# 字幕翻译（免费必应翻译）
-videocaptioner subtitle input.srt --translator bing --target-language en
+# 字幕翻译（免费 Google 翻译）
+videocaptioner subtitle input.srt --translator google --target-language en
 
 # 全流程：转录 → 优化 → 翻译 → 合成
 videocaptioner process video.mp4 --target-language ja
@@ -60,9 +40,6 @@ videocaptioner download "https://youtube.com/watch?v=xxx"
 videocaptioner config set llm.api_key <your-key>
 videocaptioner config set llm.api_base https://api.openai.com/v1
 videocaptioner config set llm.model gpt-4o-mini
-# 可选：codex 走 /responses，anthropic 走 /messages；留空则走普通 chat completions
-videocaptioner config set llm.provider codex
-videocaptioner config set subtitle.retry_count 3
 ```
 
 配置优先级：`命令行参数 > 环境变量 (VIDEOCAPTIONER_*) > 配置文件 > 默认值`。运行 `videocaptioner config show` 查看当前配置。
@@ -74,7 +51,7 @@ videocaptioner config set subtitle.retry_count 3
 |------|------|
 | `gui` | 打开桌面版。也可以直接运行 `videocaptioner-gui` |
 | `transcribe` | 语音转字幕。引擎：`faster-whisper`、`whisper-api`、`bijian`（免费）、`jianying`（免费）、`whisper-cpp` |
-| `subtitle` | 字幕优化/翻译。翻译服务：`llm`、`bing`（免费）、`google`（免费） |
+| `subtitle` | 字幕优化/翻译。翻译服务：`llm`、`google`（免费）；`bing` 保留兼容入口，但旧 Edge 免费认证已退役 |
 | `dub` | 根据字幕生成配音音轨或配音视频 |
 | `synthesize` | 字幕烧录到视频（软字幕/硬字幕） |
 | `process` | 全流程处理 |
@@ -88,22 +65,20 @@ videocaptioner config set subtitle.retry_count 3
 ## GUI 桌面版
 
 ```bash
-python -m pip install './videocaptioner-0.0.8-py3-none-any.whl[gui]'
+pip install 'videocaptioner[gui]'
 videocaptioner-gui                  # 显式打开桌面版
 videocaptioner gui                  # 等价命令
 videocaptioner                      # 无参数时也会打开桌面版
 ```
 
-如果只安装了 CLI 核心，无参数或 `gui` 命令会给出安装 `videocaptioner[gui]` 的提示，不会输出 Python traceback。
-
 <details>
 <summary>其他安装方式：Windows 安装包 / macOS 一键脚本</summary>
 
-**Windows**：GitHub Release 同时提供可直接解压运行的 zip，以及支持静默安装/卸载的 Inno Setup 安装包。
+**Windows**：从 [Release](https://github.com/WEIFENG2333/VideoCaptioner/releases) 下载安装包
 
-**macOS**：GitHub Release 保留便携 zip / app zip，也可使用一键脚本：
+**macOS**：
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bsbofmusic/VideoCaptioner-Mod/main/scripts/run.sh | bash
+curl -fsSL https://raw.githubusercontent.com/WEIFENG2333/VideoCaptioner/master/scripts/run.sh | bash
 ```
 
 </details>
@@ -118,7 +93,7 @@ curl -fsSL https://raw.githubusercontent.com/bsbofmusic/VideoCaptioner-Mod/main/
 
 ## LLM API 配置
 
-LLM 仅用于字幕优化和大模型翻译，免费功能（必剪识别、必应翻译）无需配置。
+LLM 仅用于字幕优化和大模型翻译。Bcut/必剪识别与 Google 翻译无需 LLM Key；JianYing 仍受上游远程签名服务状态影响。
 
 支持所有 OpenAI 兼容接口的服务商：
 
@@ -128,7 +103,7 @@ LLM 仅用于字幕优化和大模型翻译，免费功能（必剪识别、必�
 | SiliconCloud | [cloud.siliconflow.cn](https://cloud.siliconflow.cn/i/HF95kaoz) |
 | DeepSeek | [platform.deepseek.com](https://platform.deepseek.com) |
 
-在软件设置或 CLI 中填入 API Base URL 和 API Key 即可。GUI 额外支持 Codex 与 Anthropic/MiniMax provider。
+在软件设置或 CLI 中填入 API Base URL 和 API Key 即可。[详细配置教程](https://weifeng2333.github.io/VideoCaptioner/config/llm)
 
 ## Claude Code Skill
 
@@ -157,23 +132,16 @@ cp skills/SKILL.md ~/.claude/skills/videocaptioner/SKILL.md
 ## 开发
 
 ```bash
-git clone https://github.com/bsbofmusic/VideoCaptioner-Mod.git
-cd VideoCaptioner-Mod
-uv sync --all-extras
-uv run videocaptioner                 # 运行 GUI
+git clone https://github.com/WEIFENG2333/VideoCaptioner.git
+cd VideoCaptioner
+uv sync && uv run videocaptioner     # 运行 GUI
 uv run videocaptioner --help          # 运行 CLI
-uv run ruff check videocaptioner tests scripts
-uv run pyright \
-  videocaptioner/cli/ videocaptioner/core/asr/bcut.py \
-  videocaptioner/core/dubbing/ videocaptioner/core/speech/providers.py \
-  videocaptioner/core/subtitle/style_manager.py videocaptioner/ui/task_factory.py
-QT_QPA_PLATFORM=offscreen uv run pytest \
-  tests/test_cli tests/test_dubbing tests/test_asr tests/test_style \
-  -m "not integration and not slow and not llm" -q
+uv run pyright                        # 类型检查
+uv run pytest tests/test_cli/ -q      # 运行测试
 ```
 
 ## 许可证
 
 [GPL-3.0](LICENSE)
 
-[![Star History Chart](https://api.star-history.com/svg?repos=bsbofmusic/VideoCaptioner-Mod&type=Date)](https://star-history.com/#bsbofmusic/VideoCaptioner-Mod&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=WEIFENG2333/VideoCaptioner&type=Date)](https://star-history.com/#WEIFENG2333/VideoCaptioner&Date)

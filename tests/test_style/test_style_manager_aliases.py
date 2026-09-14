@@ -5,11 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from videocaptioner.core.subtitle.style_manager import (
-    StyleMode,
-    available_style_names,
-    load_style,
-)
+from videocaptioner.core.subtitle.style_manager import StyleMode, available_style_names, load_style
 
 
 def _write_style(styles_dir: Path, filename: str, *, name: str, mode: str, font_size: int) -> None:
@@ -38,39 +34,22 @@ def styles_dir(tmp_path: Path) -> Path:
 
 @pytest.mark.parametrize(
     ("legacy_name", "canonical_name"),
-    [
-        ("毕导科普风", "default"),
-        ("番剧可爱风", "anime"),
-        ("竖屏", "vertical"),
-    ],
+    [("毕导科普风", "default"), ("番剧可爱风", "anime"), ("竖屏", "vertical")],
 )
 def test_load_style_resolves_legacy_aliases(
-    styles_dir: Path,
-    legacy_name: str,
-    canonical_name: str,
+    styles_dir: Path, legacy_name: str, canonical_name: str
 ) -> None:
     style = load_style(legacy_name, styles_dir=styles_dir)
-
     assert style is not None
     assert style.name == canonical_name
 
 
-def test_legacy_default_alias_preserves_mode_preference(styles_dir: Path) -> None:
+def test_default_alias_preserves_mode_preference(styles_dir: Path) -> None:
     ass_style = load_style("毕导科普风", styles_dir=styles_dir, mode="ass")
     rounded_style = load_style("毕导科普风", styles_dir=styles_dir, mode="rounded")
-
-    assert ass_style is not None
-    assert ass_style.mode is StyleMode.ASS
-    assert ass_style.font_size == 40
-    assert rounded_style is not None
-    assert rounded_style.mode is StyleMode.ROUNDED
-    assert rounded_style.font_size == 28
+    assert ass_style is not None and ass_style.mode is StyleMode.ASS and ass_style.font_size == 40
+    assert rounded_style is not None and rounded_style.mode is StyleMode.ROUNDED and rounded_style.font_size == 28
 
 
-def test_legacy_aliases_do_not_pollute_canonical_style_names(styles_dir: Path) -> None:
-    names = available_style_names(styles_dir)
-
-    assert names == ["anime", "default", "vertical"]
-    assert "毕导科普风" not in names
-    assert "番剧可爱风" not in names
-    assert "竖屏" not in names
+def test_aliases_do_not_pollute_canonical_names(styles_dir: Path) -> None:
+    assert available_style_names(styles_dir) == ["anime", "default", "vertical"]

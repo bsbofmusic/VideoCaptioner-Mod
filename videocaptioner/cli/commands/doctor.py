@@ -7,6 +7,7 @@ import sys
 from argparse import Namespace
 from dataclasses import asdict, dataclass
 from datetime import date
+from pathlib import Path
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli.config import CONFIG_FILE, DEFAULTS, get
@@ -69,9 +70,16 @@ def _resolve_command(name: str) -> str | None:
     if path:
         return path
 
+    candidate_names = (name, f"{name}.exe")
+    runtime_bin = Path(sys.executable).resolve().parent
+    for candidate_name in candidate_names:
+        candidate = runtime_bin / candidate_name
+        if candidate.is_file():
+            return str(candidate)
+
     from videocaptioner.config import BUNDLED_BIN_PATH
 
-    for candidate_name in (name, f"{name}.exe"):
+    for candidate_name in candidate_names:
         candidate = BUNDLED_BIN_PATH / candidate_name
         if candidate.is_file():
             return str(candidate)
@@ -80,19 +88,12 @@ def _resolve_command(name: str) -> str | None:
 
 def _check_ytdlp() -> Check:
     path = shutil.which("yt-dlp")
-    if path:
-        version = _command_version("yt-dlp")
-        if version and _yt_dlp_version_is_old(version):
-            return Check("yt-dlp", "warn", f"{path} ({version}) may be old", "Update yt-dlp if online downloads fail")
-        return Check("yt-dlp", "ok", f"{path}" + (f" ({version})" if version else ""))
-    try:
-        import yt_dlp
-        import yt_dlp.version
-
-        version = getattr(yt_dlp.version, "__version__", "")
-        return Check("yt-dlp", "ok", "embedded yt_dlp module" + (f" ({version})" if version else ""))
-    except Exception:
+    if not path:
         return Check("yt-dlp", "error", "yt-dlp not found. Required by videocaptioner download.", "Install yt-dlp and make sure it is on PATH")
+    version = _command_version("yt-dlp")
+    if version and _yt_dlp_version_is_old(version):
+        return Check("yt-dlp", "warn", f"{path} ({version}) may be old", "Update yt-dlp if online downloads fail")
+    return Check("yt-dlp", "ok", f"{path}" + (f" ({version})" if version else ""))
 
 
 def _yt_dlp_version_is_old(version: str) -> bool:
@@ -159,7 +160,7 @@ def _check_subtitle(config: dict) -> list[Check]:
 def _check_dubbing(config: dict) -> list[Check]:
     checks: list[Check] = []
     preset_name = get(config, "dubbing.preset", "")
-    provider = get(config, "dubbing.provider", "edge")
+    provider = get(config, "dubbing.provider", "siliconflow")
     model = get(config, "dubbing.model", "")
     voice = get(config, "dubbing.voice", "")
     if preset_name:
@@ -172,11 +173,11 @@ def _check_dubbing(config: dict) -> list[Check]:
         except ValueError as exc:
             checks.append(Check("dubbing.preset", "error", str(exc), "Choose one of the presets shown in 'videocaptioner dub --help'"))
     else:
-        checks.append(Check("dubbing.preset", "warn", "No dubbing preset configured", "Run 'videocaptioner config set dubbing.preset edge-cn-female'"))
-    if provider != "edge" and not get(config, "dubbing.api_key", ""):
+        checks.append(Check("dubbing.preset", "warn", "No dubbing preset configured", "Run 'videocaptioner config set dubbing.preset siliconflow-cn-female'"))
+    if not get(config, "dubbing.api_key", ""):
         checks.append(Check("dubbing.api_key", "warn", "Dubbing TTS API key is missing", "Run 'videocaptioner config set dubbing.api_key <key>'"))
-    if provider not in {"siliconflow", "gemini", "edge"}:
-        checks.append(Check("dubbing.provider", "error", f"Unsupported provider: {provider}", "Use siliconflow, gemini, or edge"))
+    if provider not in {"siliconflow", "gemini"}:
+        checks.append(Check("dubbing.provider", "error", f"Unsupported provider: {provider}", "Use siliconflow or gemini"))
     normalized_voice = normalize_dubbing_voice(provider, model, voice)
     voice_error = validate_dubbing_voice(provider, normalized_voice)
     if voice_error:

@@ -9,8 +9,13 @@ from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 from videocaptioner.core.translate import SubtitleProcessData, TargetLanguage
 from videocaptioner.core.utils import cache
 
-# Disable cache for testing
-cache.disable_cache()
+
+@pytest.fixture(autouse=True)
+def isolate_global_cache_switch():
+    """Prevent tests that enable the process-global cache from leaking state."""
+    cache.disable_cache()
+    yield
+    cache.disable_cache()
 
 
 @pytest.fixture
@@ -51,14 +56,56 @@ def check_env_vars():
 
 
 @pytest.fixture
-def mock_llm_client():
-    """Compatibility fixture for optimizer tests.
+def mock_llm_client(monkeypatch):
+    """Provide a deterministic local OpenAI-compatible stub for pipeline tests."""
+    import ast
+    import json
+    import re
+    from types import SimpleNamespace
 
-    The optimizer integration tests still skip unless real LLM environment
-    variables are present. Keeping this fixture allows the suite to collect on
-    fresh source checkouts without requiring secrets.
-    """
-    return None
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://mock.invalid/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4o-mini")
+
+    def fake_call_llm(*, messages, model, **kwargs):
+        del model, kwargs
+        user_content = messages[1]["content"] if len(messages) > 1 else messages[-1]["content"]
+
+        if "<input_subtitle>" in user_content:
+            raw = user_content.split("<input_subtitle>", 1)[1].split("</input_subtitle>", 1)[0]
+            payload = ast.literal_eval(raw)
+            content = json.dumps(payload, ensure_ascii=False)
+        elif user_content.startswith("Please use multiple <br> tags"):
+            text = user_content.split("\n", 1)[1] if "\n" in user_content else user_content
+            parts = [part for part in re.split(r"(?<=[。！？.!?])\s*", text) if part]
+            content = "<br>".join(parts or [text])
+        else:
+            try:
+                payload = json.loads(user_content)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = None
+            content = (
+                json.dumps(payload, ensure_ascii=False)
+                if isinstance(payload, dict)
+                else str(user_content)
+            )
+
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
+        )
+
+    monkeypatch.setattr(
+        "videocaptioner.ui.thread.subtitle_thread.check_llm_connection",
+        lambda *_args, **_kwargs: (True, "ok"),
+    )
+    for target in (
+        "videocaptioner.core.split.split_by_llm.call_llm",
+        "videocaptioner.core.optimize.optimize.call_llm",
+        "videocaptioner.core.translate.llm_translator.call_llm",
+    ):
+        monkeypatch.setattr(target, fake_call_llm)
+
+    return fake_call_llm
 
 
 @pytest.fixture

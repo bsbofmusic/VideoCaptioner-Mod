@@ -3,18 +3,11 @@
 ## 安装
 
 ```bash
-# 先从 GitHub Release 下载 wheel；本 Mod 不自动发布到 PyPI
-WHEEL=./videocaptioner-0.0.8-py3-none-any.whl
-python -m pip install "$WHEEL"             # 轻量 CLI 核心
-python -m pip install "${WHEEL}[gui]"      # GUI 桌面版
-python -m pip install "${WHEEL}[dubbing]"  # Edge TTS 配音
-python -m pip install "${WHEEL}[all]"      # 完整功能
+pip install videocaptioner          # CLI + GUI 桌面版
 ```
 
 免费功能（转录、必应/谷歌翻译）无需任何配置，安装后直接使用。
-安装 `gui` extra 后，可运行 `videocaptioner-gui`、`videocaptioner gui`，或直接运行无参数的 `videocaptioner`。
-默认 Edge TTS 配音需要 `dubbing` 或 `all` extra。
-裸命令 `pip install videocaptioner` 会指向已有的上游 PyPI 项目，而不是 VideoCaptioner-Mod。
+需要桌面版时运行 `videocaptioner-gui`、`videocaptioner gui`，或直接运行无参数的 `videocaptioner`。
 
 ---
 
@@ -33,12 +26,12 @@ videocaptioner process video.mp4 --asr bijian --translator bing --target-languag
 # 给视频加字幕
 videocaptioner synthesize video.mp4 -s subtitle.srt --subtitle-mode hard
 
-# 根据字幕生成配音音轨（默认 Edge TTS，无需 API key）
-videocaptioner dub subtitle.srt -o dub.wav
+# 根据字幕生成配音音轨
+videocaptioner dub subtitle.srt --preset siliconflow-cn-female -o dub.wav
 
 # 全流程：视频 → 转录 → 翻译 → 配音视频
 videocaptioner process video.mp4 --translator bing --to zh-Hans \
-  --dub-only
+  --dub-only --preset siliconflow-cn-female
 ```
 
 ---
@@ -153,11 +146,6 @@ Bob: This line uses another voice.
 ```
 
 ```bash
-# Edge TTS（默认，无需 API key，依赖网络）
-videocaptioner dub input.srt \
-  --preset edge-cn-female \
-  -o output.wav
-
 # SiliconFlow CosyVoice2
 videocaptioner dub input.srt \
   --preset siliconflow-cn-female \
@@ -179,13 +167,13 @@ videocaptioner dub input.srt --video video.mp4 \
 
 | 选项 | 说明 |
 |------|------|
-| `--preset` | 配音预设：如 `siliconflow-cn-female`、`gemini-en-friendly`、`edge-cn-female` |
-| `--tts-api-key` | TTS API key。SiliconFlow/Gemini 需要；Edge TTS 不需要 |
-| `--voice` | 默认音色。SiliconFlow 可用 `anna`、`alex`、`benjamin`；Gemini 使用 `Kore`、`Achird`；Edge 可用 `xiaoxiao`、`yunxi` 或完整 voice ID |
+| `--preset` | 配音预设：如 `siliconflow-cn-female`、`siliconflow-cn-male`、`gemini-en-friendly` |
+| `--tts-api-key` | TTS API key。更推荐写入 `config set dubbing.api_key ...` |
+| `--voice` | 默认音色。SiliconFlow 可用 `anna`、`alex`、`benjamin` 短名；Gemini 使用 `Kore`、`Achird` 等内置名 |
 | `--speak auto/first/second` | 双语字幕时选择朗读第一行还是第二行 |
 | `--speaker-voice NAME=VOICE` | 给字幕中的说话人指定音色，可重复 |
 | `--speaker-clone NAME=AUDIO\|TEXT` | SiliconFlow 音色克隆参考音频与对应文本 |
-| `--clone-audio` / `--clone-text` | 给默认说话人使用 SiliconFlow 音色克隆；Gemini/Edge 不支持 |
+| `--clone-audio` / `--clone-text` | 给默认说话人使用 SiliconFlow 音色克隆 |
 | `--timing balanced/strict/natural/none` | 时间轴策略：默认平衡；`strict` 更贴字幕；`natural` 更保留自然语速 |
 | `--adapt-length` | 使用 LLM 缩短明显过长的台词 |
 | `--audio-mode replace/mix/duck` | 输出视频时替换原声、混合原声，或压低原声作为背景 |
@@ -218,6 +206,8 @@ videocaptioner process talk.mp4 \
   --asr bijian \
   --translator bing --to zh-Hans \
   --dub-only \
+  --preset siliconflow-cn-female \
+  --tts-api-key "$VIDEOCAPTIONER_TTS_API_KEY" \
   --timing strict
 
 # 中文视频配成英文视频
@@ -315,6 +305,7 @@ videocaptioner doctor
 ```bash
 videocaptioner config init --non-interactive --profile dubbing \
   --translator bing \
+  --dub-preset siliconflow-cn-female \
   --timing balanced --audio-mode replace
 ```
 
@@ -335,9 +326,9 @@ split = true
 service = "bing"
 
 [dubbing]
-preset = "edge-cn-female"
+preset = "siliconflow-cn-female"
 api_key = ""
-voice = "xiaoxiao"
+voice = "anna"
 timing = "balanced"
 audio_mode = "replace"
 tts_workers = 5

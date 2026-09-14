@@ -24,17 +24,6 @@ from videocaptioner.cli import exit_codes as EXIT
 GUI_OPTIONAL_IMPORT_ROOTS = {"GPUtil", "PyQt5", "modelscope", "psutil", "qfluentwidgets"}
 
 
-def _configure_stdio() -> None:
-    """Prefer UTF-8 CLI output, and never crash on legacy Windows encodings."""
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure:
-            try:
-                reconfigure(encoding="utf-8", errors="replace")
-            except Exception:
-                pass
-
-
 def _add_llm_options(parser: argparse.ArgumentParser) -> None:
     """Add LLM-related options shared across commands."""
     group = parser.add_argument_group("LLM options")
@@ -278,8 +267,8 @@ def _build_dub_parser(subparsers) -> None:
     tts = p.add_argument_group("Dubbing options")
     tts.add_argument("--preset", dest="dub_preset", choices=available_dubbing_presets(), help="Voice preset")
     p.add_argument("--dub-preset", dest="dub_preset", choices=available_dubbing_presets(), help=argparse.SUPPRESS)
-    tts.add_argument("--tts-api-key", metavar="KEY", help="TTS API key for SiliconFlow/Gemini. Edge does not need one")
-    tts.add_argument("--voice", metavar="VOICE", help="Default voice, e.g. anna, Kore, xiaoxiao")
+    tts.add_argument("--tts-api-key", metavar="KEY", help="TTS API key. Prefer config set dubbing.api_key")
+    tts.add_argument("--voice", metavar="VOICE", help="Default voice, e.g. anna, alex, benjamin, Kore")
     tts.add_argument("--speak", dest="text_track", choices=["auto", "first", "second"], help="Subtitle line to speak for bilingual subtitles")
     p.add_argument("--text-track", dest="text_track", choices=["auto", "first", "second", "source", "target", "original", "translated"], help=argparse.SUPPRESS)
     tts.add_argument("--timing", choices=["balanced", "strict", "natural", "none"], help="Timing strategy")
@@ -313,7 +302,7 @@ def _build_dub_parser(subparsers) -> None:
     speaker.add_argument("--clone-text", metavar="TEXT", help="Exact transcript for --clone-audio")
 
     # Hidden advanced/provider options. They remain available for scripts and debugging.
-    p.add_argument("--provider", choices=["siliconflow", "gemini", "edge"], help=argparse.SUPPRESS)
+    p.add_argument("--provider", choices=["siliconflow", "gemini"], help=argparse.SUPPRESS)
     p.add_argument("--tts-api-base", metavar="URL", help=argparse.SUPPRESS)
     p.add_argument("--tts-model", metavar="NAME", help=argparse.SUPPRESS)
     p.add_argument("--style-prompt", metavar="TEXT", help=argparse.SUPPRESS)
@@ -371,7 +360,7 @@ def _build_process_parser(subparsers) -> None:
                       help="Subtitle layout (default: target-above)")
     pipe.add_argument("--preset", dest="dub_preset", choices=available_dubbing_presets(), help="Dubbing voice preset")
     p.add_argument("--dub-preset", dest="dub_preset", choices=available_dubbing_presets(), help=argparse.SUPPRESS)
-    pipe.add_argument("--tts-api-key", metavar="KEY", help="Dubbing TTS API key for SiliconFlow/Gemini")
+    pipe.add_argument("--tts-api-key", metavar="KEY", help="Dubbing TTS API key")
     pipe.add_argument("--voice", metavar="VOICE", help="Default dubbing voice")
     pipe.add_argument("--timing", choices=["balanced", "strict", "natural", "none"], help="Dubbing timing strategy")
     pipe.add_argument("--adapt-length", dest="rewrite_too_long", action="store_true", help="Shorten lines that are too long for their subtitle slot")
@@ -389,7 +378,7 @@ def _build_process_parser(subparsers) -> None:
     p.add_argument("--batch-size", type=int, metavar="N", help=argparse.SUPPRESS)
     p.add_argument("--whisper-api-base", help=argparse.SUPPRESS)
     p.add_argument("--whisper-model", help=argparse.SUPPRESS)
-    p.add_argument("--dub-provider", choices=["siliconflow", "gemini", "edge"], help=argparse.SUPPRESS)
+    p.add_argument("--dub-provider", choices=["siliconflow", "gemini"], help=argparse.SUPPRESS)
     p.add_argument("--tts-api-base", metavar="URL", help=argparse.SUPPRESS)
     p.add_argument("--tts-model", metavar="NAME", help=argparse.SUPPRESS)
     p.add_argument("--style-prompt", metavar="TEXT", help=argparse.SUPPRESS)
@@ -462,7 +451,7 @@ def _build_config_parser(subparsers) -> None:
     init_p.add_argument("--target-language", "--to", dest="target_language", metavar="CODE", help=argparse.SUPPRESS)
     init_p.add_argument("--no-optimize", action="store_true", help="Disable AI subtitle polish by default")
     init_p.add_argument("--no-split", action="store_true", help="Disable subtitle re-segmentation by default")
-    init_p.add_argument("--tts-api-key", metavar="KEY", help="Dubbing TTS API key for SiliconFlow/Gemini")
+    init_p.add_argument("--tts-api-key", metavar="KEY", help="Dubbing TTS API key")
     init_p.add_argument("--dub-preset", "--preset", dest="dub_preset", help="Dubbing voice preset")
     init_p.add_argument("--voice", metavar="VOICE", help="Default dubbing voice")
     init_p.add_argument("--timing", choices=["balanced", "strict", "natural", "none"], help="Dubbing timing strategy")
@@ -652,9 +641,8 @@ def _run_transcribe(args: argparse.Namespace) -> int:
 
 def _run_gui(_args: argparse.Namespace) -> int:
     try:
-        from videocaptioner.ui.main import main as gui_main
-
-        gui_main()
+        from videocaptioner.ui.main import main as _gui_main
+        _gui_main()
     except ImportError as exc:
         missing_root = (exc.name or "").partition(".")[0]
         if missing_root not in GUI_OPTIONAL_IMPORT_ROOTS:
@@ -667,7 +655,6 @@ def _run_gui(_args: argparse.Namespace) -> int:
 
 def gui_main() -> int:
     """Launch the GUI through the same optional-dependency guard as the main CLI."""
-    _configure_stdio()
     return _run_gui(argparse.Namespace())
 
 
@@ -720,7 +707,6 @@ def _run_style(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    _configure_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
 

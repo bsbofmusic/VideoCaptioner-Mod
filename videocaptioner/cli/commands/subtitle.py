@@ -92,7 +92,6 @@ def run(args: Namespace, config: dict) -> int:
 
     thread_num = get(config, "subtitle.thread_num", 4)
     batch_size = get(config, "subtitle.batch_size", 20)
-    retry_count = get(config, "subtitle.retry_count", 3)
     max_cjk = get(config, "subtitle.max_word_count_cjk", 18)
     max_english = get(config, "subtitle.max_word_count_english", 12)
 
@@ -102,9 +101,6 @@ def run(args: Namespace, config: dict) -> int:
         return EXIT.USAGE_ERROR
     if batch_size < 1:
         output.error("--batch-size must be at least 1")
-        return EXIT.USAGE_ERROR
-    if retry_count < 3 or retry_count > 50:
-        output.error("subtitle.retry_count must be between 3 and 50")
         return EXIT.USAGE_ERROR
     if max_cjk < 1 or max_english < 1:
         output.error("--max-cjk and --max-english must be at least 1")
@@ -144,15 +140,10 @@ def run(args: Namespace, config: dict) -> int:
     llm_api_key = get(config, "llm.api_key", "")
     llm_api_base = get(config, "llm.api_base", "")
     llm_model = get(config, "llm.model", "")
-    llm_provider = str(get(config, "llm.provider", "") or "").strip().lower()
     if llm_api_key:
         os.environ["OPENAI_API_KEY"] = llm_api_key
     if llm_api_base:
         os.environ["OPENAI_BASE_URL"] = llm_api_base
-    if llm_provider in ("codex", "anthropic"):
-        os.environ["LLM_PROVIDER"] = llm_provider.upper()
-    else:
-        os.environ.pop("LLM_PROVIDER", None)
 
     # Load custom prompt (only if LLM features are needed)
     custom_prompt = getattr(args, "prompt", None) or ""
@@ -170,8 +161,7 @@ def run(args: Namespace, config: dict) -> int:
         if need_translate:
             output.info(f"Translator: {translator_service}, Target: {target_lang_code}")
         if needs_llm and llm_model:
-            provider_suffix = f" ({llm_provider})" if llm_provider else ""
-            output.info(f"LLM: {llm_model}{provider_suffix} @ {llm_api_base}")
+            output.info(f"LLM: {llm_model} @ {llm_api_base}")
 
     # Load subtitle data
     from videocaptioner.core.asr.asr_data import ASRData
@@ -215,7 +205,6 @@ def run(args: Namespace, config: dict) -> int:
                 batch_num=batch_size,
                 model=llm_model,
                 custom_prompt=custom_prompt,
-                retry_count=retry_count,
                 update_callback=callback,
             )
             asr_data = optimizer.optimize_subtitle(asr_data)

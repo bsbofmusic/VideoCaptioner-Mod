@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Optional
 
-DubbingProvider = Literal["siliconflow", "gemini", "edge"]
+DubbingProvider = Literal["siliconflow", "gemini"]
 FitMode = Literal["none", "tempo"]
 
 

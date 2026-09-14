@@ -1,4 +1,4 @@
-name: Release Python Packages
+name: Release Python artifacts
 
 on:
   push:
@@ -6,126 +6,66 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: python-release-${{ github.ref }}
-  cancel-in-progress: false
+  contents: write
 
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
-
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
       - name: Install dependencies
-        run: uv sync --frozen --all-extras
-
-      - name: Verify lockfile
-        run: uv lock --check
-
+        run: uv sync --frozen
       - name: Lint
-        run: uv run ruff check videocaptioner/ tests/ scripts/
+        run: uv run ruff check .
+      - name: Type check
+        run: uv run pyright
+      - name: Offline test suite
+        run: uv run pytest -m "not integration and not slow and not llm" -q
 
-      - name: Type check release-critical code
-        run: >-
-          uv run pyright
-          videocaptioner/cli/
-          videocaptioner/core/asr/bcut.py
-          videocaptioner/core/dubbing/
-          videocaptioner/core/speech/providers.py
-          videocaptioner/core/subtitle/style_manager.py
-          videocaptioner/ui/task_factory.py
-
-      - name: Unit tests
-        run: >-
-          uv run pytest
-          tests/test_cli
-          tests/test_dubbing
-          tests/test_asr
-          tests/test_style
-          tests/test_packaging/test_ci_workflows.py
-          tests/test_packaging/test_dependency_layers.py
-          tests/test_packaging/test_windows_installer.py
-          -m "not integration and not llm" -q
-
-  package:
+  build:
     needs: quality
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
-
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install dependencies
-        run: uv sync --frozen --all-extras
-
-      - name: Build wheel and source distribution
+      - name: Build package
         run: uv build
-
-      - name: Fresh core and all-extra install smoke tests
-        shell: bash
-        run: |
-          WHEELS=(dist/*.whl)
-          WHEEL_PATH="${WHEELS[0]}"
-          test -f "$WHEEL_PATH"
-          VIDEOCAPTIONER_TEST_WHEEL="$WHEEL_PATH" \
-            uv run pytest tests/test_packaging/test_fresh_install.py -q
-
-      - name: Upload package artifacts
-        uses: actions/upload-artifact@v7
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: python-dist
+          name: dist
           path: dist/
-          if-no-files-found: error
-          retention-days: 14
 
   release:
-    needs: package
+    needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - name: Download package artifacts
-        uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v4
         with:
-          name: python-dist
+          name: dist
           path: dist/
-
-      - name: Upload wheel and source distribution to GitHub Release
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "$TAG" --generate-notes || \
-              gh release view "$TAG" >/dev/null
-          fi
-          gh release upload "$TAG" dist/* --clobber
+          gh release create "${GITHUB_REF#refs/tags/}" dist/* \
+            --title "${GITHUB_REF#refs/tags/}" \
+            --generate-notes

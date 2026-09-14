@@ -1,6 +1,5 @@
 """Speech synthesis provider implementations."""
 
-import asyncio
 import base64
 import hashlib
 import time
@@ -18,18 +17,6 @@ from .models import SpeechProviderConfig, SynthesisRequest, SynthesisResult
 logger = setup_logger("speech")
 
 
-def _load_edge_tts() -> Any:
-    """Import Edge TTS only when its provider is invoked."""
-    try:
-        import edge_tts
-    except ImportError as exc:
-        raise RuntimeError(
-            "Edge TTS support is not installed. "
-            "Install it with: pip install 'videocaptioner[dubbing]'"
-        ) from exc
-    return edge_tts
-
-
 class SpeechSynthesizer(Protocol):
     """Provider-neutral synthesis interface used by the dubbing pipeline."""
 
@@ -45,65 +32,7 @@ def create_speech_synthesizer(config: SpeechProviderConfig) -> SpeechSynthesizer
         return SiliconFlowSpeechSynthesizer(config)
     if config.provider == "gemini":
         return GeminiSpeechSynthesizer(config)
-    if config.provider == "edge":
-        return EdgeTTSSpeechSynthesizer(config)
     raise ValueError(f"Unsupported speech provider: {config.provider}")
-
-
-class EdgeTTSSpeechSynthesizer:
-    """Microsoft Edge online TTS synthesizer.
-
-    This provider uses the unofficial Edge read-aloud endpoint through edge-tts.
-    It does not require an API key and does not support voice cloning.
-    """
-
-    DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
-
-    def __init__(self, config: SpeechProviderConfig):
-        self.config = config
-
-    def synthesize(self, request: SynthesisRequest) -> SynthesisResult:
-        if request.clone_audio_path or request.clone_audio_text:
-            raise ValueError("Edge TTS does not support voice cloning")
-        voice = request.voice or self.config.default_voice or self.DEFAULT_VOICE
-        path = Path(request.output_path).with_suffix(".mp3")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        asyncio.run(self._save(request.text, voice, path))
-        if not path.exists() or path.stat().st_size <= 0:
-            raise ValueError("Edge TTS returned an empty audio file")
-        return SynthesisResult(
-            output_path=str(path),
-            voice=voice,
-            format="mp3",
-            provider_metadata={
-                "rate": self._edge_rate(),
-                "volume": self._edge_volume(),
-                "pitch": "+0Hz",
-            },
-        )
-
-    async def _save(self, text: str, voice: str, path: Path) -> None:
-        edge_tts = _load_edge_tts()
-        communicate = edge_tts.Communicate(
-            text=text.strip(),
-            voice=voice,
-            rate=self._edge_rate(),
-            volume=self._edge_volume(),
-            pitch="+0Hz",
-            connect_timeout=min(self.config.timeout, 30),
-            receive_timeout=self.config.timeout,
-        )
-        await communicate.save(str(path))
-
-    def _edge_rate(self) -> str:
-        percent = round((self.config.speed - 1.0) * 100)
-        percent = max(-50, min(100, percent))
-        return f"{percent:+d}%"
-
-    def _edge_volume(self) -> str:
-        percent = round(self.config.gain)
-        percent = max(-50, min(50, percent))
-        return f"{percent:+d}%"
 
 
 class SiliconFlowSpeechSynthesizer:

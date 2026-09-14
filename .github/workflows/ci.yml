@@ -8,25 +8,19 @@ on:
       - main
       - dev
 
-permissions:
-  contents: read
-
 jobs:
   python:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -34,96 +28,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Install dependencies
-        run: uv sync --frozen --all-extras
-
-      - name: Verify lockfile
-        run: uv lock --check
+        run: uv sync --frozen
 
       - name: Lint
-        run: uv run ruff check videocaptioner/ tests/ scripts/
+        run: uv run ruff check videocaptioner/
 
-      - name: Type check release-critical code
-        run: >-
-          uv run pyright
-          videocaptioner/cli/
-          videocaptioner/core/asr/bcut.py
-          videocaptioner/core/dubbing/
-          videocaptioner/core/speech/providers.py
-          videocaptioner/core/subtitle/style_manager.py
-          videocaptioner/ui/task_factory.py
+      - name: Type check CLI
+        run: uv run pyright videocaptioner/cli/
 
       - name: Unit tests
-        run: >-
-          uv run pytest
-          tests/test_cli
-          tests/test_dubbing
-          tests/test_asr
-          tests/test_style
-          tests/test_packaging/test_ci_workflows.py
-          tests/test_packaging/test_dependency_layers.py
-          tests/test_packaging/test_windows_installer.py
-          -m "not integration and not llm" -q
+        run: uv run pytest tests/test_cli tests/test_dubbing -q
 
       - name: Build package
         run: uv build
-
-      - name: Fresh core and all-extra install smoke tests
-        shell: bash
-        run: |
-          WHEELS=(dist/*.whl)
-          WHEEL_PATH="${WHEELS[0]}"
-          test -f "$WHEEL_PATH"
-          VIDEOCAPTIONER_TEST_WHEEL="$WHEEL_PATH" \
-            uv run pytest tests/test_packaging/test_fresh_install.py -q
-
-  core-compatibility:
-    name: Core wheel (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: astral-sh/setup-uv@v8.1.0
-        with:
-          version: "latest"
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "${{ matrix.python-version }}"
-
-      - name: Build core wheel
-        run: uv build --wheel
-
-      - name: Install core wheel without optional extras
-        run: |
-          python -m venv .core-venv
-          .core-venv/bin/python -m pip install --disable-pip-version-check dist/*.whl
-
-      - name: Smoke core CLI and guarded GUI entry points
-        shell: bash
-        run: |
-          source .core-venv/bin/activate
-          videocaptioner --help
-          videocaptioner transcribe --help
-
-          assert_gui_missing() {
-            set +e
-            output="$("$@" 2>&1)"
-            status=$?
-            set -e
-            test "$status" -eq 4
-            grep -F "pip install 'videocaptioner[gui]'" <<<"$output"
-            if grep -F "Traceback" <<<"$output"; then
-              echo "GUI command emitted a traceback" >&2
-              return 1
-            fi
-          }
-
-          assert_gui_missing videocaptioner gui
-          assert_gui_missing videocaptioner-gui

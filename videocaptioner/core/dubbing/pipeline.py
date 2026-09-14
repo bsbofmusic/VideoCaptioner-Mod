@@ -4,7 +4,7 @@ import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Literal, Optional
+from typing import Callable, Optional
 
 from videocaptioner.core.speech import (
     SpeechProviderConfig,
@@ -31,7 +31,7 @@ class DubbingPipeline:
             base_url=config.base_url,
             model=config.model,
             default_voice=config.voice,
-            response_format=self._provider_response_format(config),
+            response_format="wav" if config.provider == "gemini" else config.response_format,
             sample_rate=config.sample_rate,
             speed=config.speed,
             gain=config.gain,
@@ -221,19 +221,7 @@ class DubbingPipeline:
     def _provider_extension(self) -> str:
         if self.config.provider == "gemini":
             return "wav"
-        if self.config.provider == "edge":
-            return "mp3"
         return self.config.response_format
-
-    @staticmethod
-    def _provider_response_format(
-        config: DubbingConfig,
-    ) -> Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]:
-        if config.provider == "gemini":
-            return "wav"
-        if config.provider == "edge":
-            return "mp3"
-        return config.response_format
 
     @staticmethod
     def _segment_hash(segment: DubbingSegment) -> str:

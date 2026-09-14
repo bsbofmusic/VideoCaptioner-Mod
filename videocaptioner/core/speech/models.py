@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-SpeechProvider = Literal["siliconflow", "gemini", "edge"]
+SpeechProvider = Literal["siliconflow", "gemini"]
 AudioFormat = Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
 
 

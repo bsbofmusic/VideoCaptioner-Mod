@@ -6,7 +6,6 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.entities import (
-    LLMServiceEnum,
     SubtitleConfig,
     SubtitleLayoutEnum,
     SubtitleProcessData,
@@ -89,16 +88,11 @@ class SubtitleThread(QThread):
                 config.base_url,
                 config.api_key,
                 config.llm_model,
-                config.llm_service,
             )
             if not success:
                 raise Exception(f"{self.tr('LLM API 测试失败: ')}{message or ''}")
             os.environ["OPENAI_BASE_URL"] = config.base_url
             os.environ["OPENAI_API_KEY"] = config.api_key
-            if config.llm_service in (LLMServiceEnum.CODEX, LLMServiceEnum.ANTHROPIC):
-                os.environ["LLM_PROVIDER"] = config.llm_service.name
-            else:
-                os.environ.pop("LLM_PROVIDER", None)
             return config
         else:
             raise Exception(self.tr("LLM API 未配置, 请检查LLM配置"))
@@ -163,15 +157,12 @@ class SubtitleThread(QThread):
                 if not subtitle_config.llm_model:
                     raise Exception(self.tr("LLM 模型未配置"))
                 optimizer = SubtitleOptimizer(
-                    thread_num=subtitle_config.optimize_thread_num,
-                    batch_num=subtitle_config.optimize_batch_size,
+                    thread_num=subtitle_config.thread_num,
+                    batch_num=subtitle_config.batch_size,
                     model=subtitle_config.llm_model,
                     custom_prompt=custom_prompt or "",
-                    timeout_seconds=subtitle_config.optimize_timeout_seconds,
-                    retry_count=subtitle_config.optimize_retry_count,
                     update_callback=self.callback,
                 )
-                self.optimizer = optimizer
                 asr_data = optimizer.optimize_subtitle(asr_data)
                 asr_data.remove_punctuation()
                 self.update_all.emit(asr_data.to_json())
@@ -341,10 +332,6 @@ class RetranslateThread(QThread):
                     raise Exception("LLM API 未配置，请检查 LLM 配置")
                 os.environ["OPENAI_BASE_URL"] = config.base_url
                 os.environ["OPENAI_API_KEY"] = config.api_key
-                if config.llm_service in (LLMServiceEnum.CODEX, LLMServiceEnum.ANTHROPIC):
-                    os.environ["LLM_PROVIDER"] = config.llm_service.name
-                else:
-                    os.environ.pop("LLM_PROVIDER", None)
 
             # 构建仅含选中行的 ASRData
             asr_data = ASRData.from_json(self.selected_data)

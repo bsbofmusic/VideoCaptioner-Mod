@@ -105,8 +105,6 @@ class LLMServiceEnum(Enum):
     """LLM服务"""
 
     OPENAI = "OpenAI 兼容"
-    CODEX = "Codex"
-    ANTHROPIC = "Anthropic"
     SILICON_CLOUD = "SiliconCloud"
     DEEPSEEK = "DeepSeek"
     OLLAMA = "Ollama"
@@ -631,7 +629,6 @@ class SubtitleConfig:
     base_url: Optional[str] = None
     api_key: Optional[str] = None
     llm_model: Optional[str] = None
-    llm_service: Optional[LLMServiceEnum] = None
     deeplx_endpoint: Optional[str] = None
     # 翻译服务
     translator_service: Optional[TranslatorServiceEnum] = None
@@ -640,10 +637,6 @@ class SubtitleConfig:
     need_reflect: bool = False
     thread_num: int = 10
     batch_size: int = 10
-    optimize_thread_num: int = 10
-    optimize_batch_size: int = 50
-    optimize_timeout_seconds: int = 90
-    optimize_retry_count: int = 3
     # 字幕布局和分割
     subtitle_layout: SubtitleLayoutEnum = SubtitleLayoutEnum.ORIGINAL_ON_TOP
     max_word_count_cjk: int = 12
@@ -671,12 +664,6 @@ class SubtitleConfig:
         if self.need_optimize:
             lines.append("Optimize: Yes")
             lines.append(f"  Model: {self.llm_model or 'None'}")
-            if self.llm_service:
-                lines.append(f"  Provider: {self.llm_service.value}")
-            lines.append(f"  Concurrency: {self.optimize_thread_num}")
-            lines.append(f"  Batch Size: {self.optimize_batch_size}")
-            lines.append(f"  Timeout Seconds: {self.optimize_timeout_seconds}")
-            lines.append(f"  Retry Count: {self.optimize_retry_count}")
             if self.custom_prompt_text:
                 lines.append(f"  Custom Prompt: {self.custom_prompt_text[:30]}...")
 

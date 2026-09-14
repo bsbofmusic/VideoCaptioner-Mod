@@ -2,7 +2,6 @@
 
 from .models import SpeechProviderConfig, SynthesisRequest, SynthesisResult
 from .providers import (
-    EdgeTTSSpeechSynthesizer,
     GeminiSpeechSynthesizer,
     SiliconFlowSpeechSynthesizer,
     SpeechSynthesizer,
@@ -11,7 +10,6 @@ from .providers import (
 
 __all__ = [
     "GeminiSpeechSynthesizer",
-    "EdgeTTSSpeechSynthesizer",
     "SiliconFlowSpeechSynthesizer",
     "SpeechProviderConfig",
     "SpeechSynthesizer",

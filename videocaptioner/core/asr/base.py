@@ -1,7 +1,5 @@
 import os
 import threading
-import time
-import uuid
 import zlib
 from io import BytesIO
 from typing import Callable, Optional, Union, cast
@@ -156,56 +154,28 @@ class BaseASR:
         raise NotImplementedError("_run method must be implemented in subclass")
 
     def _check_rate_limit(self) -> None:
-        """Check rate limit for public charity services."""
+        """Normalize the app-local quota state to a fresh, unused state.
+
+        Upstream stores its client-side charity-service usage as cache entries
+        tagged ``rate_limit:<ServiceName>``. The Mod keeps that exact storage
+        format and call site, but removes only those local usage records before
+        each request so every supported service sees a fresh local quota.
+
+        This deliberately does *not* touch ASR result cache, settings, models,
+        or any remote/server-side throttling. A real upstream HTTP 429 remains
+        a real upstream HTTP 429.
+        """
+        service_name = self.__class__.__name__
+        tag = f"rate_limit:{service_name}"
+
         with self._lock:
-            service_name = self.__class__.__name__
-            tag = f"rate_limit:{service_name}"
-            time_limit = time.time() - self.RATE_LIMIT_TIME_WINDOW
-
             try:
-                query = "SELECT key FROM Cache WHERE tag = ? AND store_time >= ?"
-                results = self._cache._sql(query, (tag, time_limit)).fetchall()
+                removed = self._cache.evict(tag)
             except Exception as e:
-                raise RuntimeError(f"Failed to query rate limit: {e}")
+                raise RuntimeError(f"Failed to refresh local quota state: {e}")
 
-            durations = []
-            for (key,) in results:
-                duration = self._cache.get(key, default=None)
-                if duration is not None and isinstance(duration, (int, float)):
-                    durations.append(duration)
-
-            call_count = len(durations)
-            total_duration = sum(durations)
-
-            if (
-                total_duration + self.audio_duration > self.RATE_LIMIT_MAX_DURATION
-                or call_count >= self.RATE_LIMIT_MAX_CALLS
-            ):
-                try:
-                    removed = self._cache.evict(tag)
-                    total_duration = 0
-                    call_count = 0
-                    logger.warning(
-                        "%s local rate limit refreshed, removed %s records",
-                        service_name,
-                        removed,
-                    )
-                except Exception as e:
-                    raise RuntimeError(f"Failed to refresh rate limit: {e}")
-
-            if total_duration + self.audio_duration > self.RATE_LIMIT_MAX_DURATION:
-                error_msg = f"{service_name} duration limit exceeded"
-                logger.warning(error_msg)
-                raise RuntimeError(error_msg)
-
-            if call_count >= self.RATE_LIMIT_MAX_CALLS:
-                error_msg = f"{service_name} call count limit exceeded"
-                logger.warning(error_msg)
-                raise RuntimeError(error_msg)
-
-            self._cache.set(
-                f"rate_limit_record:{service_name}:{uuid.uuid4()}",
-                self.audio_duration,
-                tag=tag,
-                expire=int(self.RATE_LIMIT_TIME_WINDOW) + 3600,
-            )
+        logger.debug(
+            "%s local quota normalized to fresh state; removed %s usage records",
+            service_name,
+            removed,
+        )

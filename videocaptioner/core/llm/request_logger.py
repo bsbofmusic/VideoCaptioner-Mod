@@ -50,8 +50,7 @@ def _write_log(entry: Dict[str, Any]) -> None:
 
 def _on_request(request: httpx.Request) -> None:
     """请求发送前: 暂存请求信息"""
-    request_url = str(request.url)
-    if "/chat/completions" not in request_url and "/responses" not in request_url:
+    if "/chat/completions" not in str(request.url):
         return
 
     try:
@@ -61,7 +60,7 @@ def _on_request(request: httpx.Request) -> None:
 
     _pending_requests[id(request)] = {
         "start_time": time.time(),
-        "url": request_url,
+        "url": str(request.url),
         "request": request_body,
     }
 
@@ -84,7 +83,6 @@ def _on_response(response: httpx.Response) -> None:
 def create_logging_http_client() -> httpx.Client:
     """创建带日志记录的 HTTPX 客户端"""
     return httpx.Client(
-        timeout=httpx.Timeout(90.0, connect=10.0),
         event_hooks={
             "request": [_on_request],
             "response": [_on_response],

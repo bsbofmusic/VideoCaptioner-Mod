@@ -143,7 +143,7 @@ def _build_dubbing_config(config: dict, speaker_profiles: dict[str, SpeakerProfi
 def _resolve_dubbing_settings(config: dict) -> dict[str, str]:
     preset_name = get(config, "dubbing.preset", "")
     resolved = {
-        "provider": get(config, "dubbing.provider", "edge"),
+        "provider": get(config, "dubbing.provider", "siliconflow"),
         "api_base": get(config, "dubbing.api_base", ""),
         "model": get(config, "dubbing.model", ""),
         "voice": get(config, "dubbing.voice", ""),
@@ -153,12 +153,11 @@ def _resolve_dubbing_settings(config: dict) -> dict[str, str]:
         return resolved
 
     preset = get_dubbing_preset(preset_name)
-    default_preset = get_dubbing_preset("edge-cn-female")
     defaults = {
-        "provider": default_preset.provider,
-        "api_base": default_preset.api_base,
-        "model": default_preset.model,
-        "voice": default_preset.voice,
+        "provider": get_dubbing_preset("siliconflow-cn-male").provider,
+        "api_base": get_dubbing_preset("siliconflow-cn-male").api_base,
+        "model": get_dubbing_preset("siliconflow-cn-male").model,
+        "voice": get_dubbing_preset("siliconflow-cn-male").voice,
         "style_prompt": "",
     }
     preset_values = {
@@ -175,12 +174,8 @@ def _resolve_dubbing_settings(config: dict) -> dict[str, str]:
 
 
 def _resolve_provider(value: str) -> DubbingProvider:
-    if value == "siliconflow":
-        return "siliconflow"
-    if value == "gemini":
-        return "gemini"
-    if value == "edge":
-        return "edge"
+    if value == "siliconflow" or value == "gemini":
+        return value
     raise ValueError(f"Unsupported dubbing provider: {value}")
 
 
@@ -214,8 +209,6 @@ def _resolve_audio_mix(config: dict) -> tuple[bool, float]:
 def _validate_provider_capabilities(config: DubbingConfig) -> str | None:
     if config.provider == "gemini" and any(p.clone_audio_path for p in config.speaker_profiles.values()):
         return "Gemini TTS does not support voice cloning. Use a SiliconFlow preset/provider for --clone-audio or --speaker-clone."
-    if config.provider == "edge" and any(p.clone_audio_path for p in config.speaker_profiles.values()):
-        return "Edge TTS does not support voice cloning. Use a SiliconFlow preset/provider for --clone-audio or --speaker-clone."
     voice_error = validate_dubbing_voice(config.provider, config.voice)
     if voice_error:
         return voice_error

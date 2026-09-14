@@ -95,11 +95,10 @@ class LLMTranslator(BaseTranslator):
         except Exception as e:
             logger.error(f"LLM translation error: {e}")
             raise
-            return self._translate_chunk_single(subtitle_chunk)
 
     def _agent_loop(
         self, system_prompt: str, subtitle_dict: Dict[str, str]
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         """Agent loop翻译字幕块"""
         messages = [
             {"role": "system", "content": system_prompt},
@@ -132,7 +131,9 @@ class LLMTranslator(BaseTranslator):
                     }
                 )
 
-        return last_response_dict
+        if isinstance(last_response_dict, dict):
+            return last_response_dict
+        raise RuntimeError("LLM translation agent produced no valid dictionary response")
 
     def _validate_llm_response(
         self, response_dict: Any, subtitle_dict: Dict[str, str]

@@ -22,14 +22,18 @@ API_QUERY_RESULT = API_BASE_URL + "/task/result"
 REQUEST_TIMEOUT = httpx.Timeout(connect=10, read=120, write=120, pool=10)
 UPLOAD_REQUEST_TIMEOUT = httpx.Timeout(connect=10, read=120, write=180, pool=10)
 
-# The legacy 500 x 1-second polling loop intended an approximately 500-second wait.
-# Use a ten-minute wall-clock cap so slow requests cannot stretch polling into hours.
+# Keep long-running successful jobs bounded, while making throttling/network failures fail fast.
 POLLING_DEADLINE_SECONDS = 600.0
 POLLING_INTERVAL_SECONDS = 1.0
-RESULT_RETRY_BACKOFF_SECONDS = (2.0, 5.0, 10.0, 20.0)
-MAX_RETRY_AFTER_SECONDS = 60.0
-RETRYABLE_RESULT_STATUS_CODES = frozenset({412, 429, 500, 502, 503, 504})
-BCUT_MODEL_ID = "8"
+TRANSIENT_RETRY_BACKOFF_SECONDS = (1.0, 2.0, 5.0, 10.0)
+THROTTLE_RETRY_BACKOFF_SECONDS = (2.0, 5.0)
+MAX_RETRY_AFTER_SECONDS = 15.0
+MAX_TRANSIENT_RESULT_RETRIES = len(TRANSIENT_RETRY_BACKOFF_SECONDS)
+MAX_THROTTLE_RESULT_RETRIES = len(THROTTLE_RETRY_BACKOFF_SECONDS)
+TRANSIENT_RESULT_STATUS_CODES = frozenset({500, 502, 503, 504})
+THROTTLE_RESULT_STATUS_CODES = frozenset({412, 429})
+BCUT_TASK_MODEL_ID = "8"
+BCUT_RESULT_MODEL_ID = 7
 
 logger = logging.getLogger(__name__)
 
@@ -121,9 +125,10 @@ class BcutASR(BaseASR):
             except httpx.HTTPStatusError:
                 safe_request = httpx.Request(method, "https://redacted.invalid/")
                 retry_after = response.headers.get("Retry-After")
+                safe_headers = {"Retry-After": retry_after} if retry_after else {}
                 safe_response = httpx.Response(
                     response.status_code,
-                    headers={"Retry-After": retry_after} if retry_after else None,
+                    headers=safe_headers,
                     request=safe_request,
                 )
                 http_error = httpx.HTTPStatusError(
@@ -141,21 +146,16 @@ class BcutASR(BaseASR):
 
     @staticmethod
     def _retry_after_seconds(response: httpx.Response) -> Optional[float]:
-        """Return a valid Retry-After value, capped to the polling policy."""
+        """Parse Retry-After and cap it so throttling cannot look like a hang."""
         retry_after = response.headers.get("Retry-After", "").strip()
         if not retry_after:
             return None
-        if retry_after.isdigit():
-            if not retry_after.isascii():
-                return None
 
+        if retry_after.isdigit() and retry_after.isascii():
             normalized = retry_after.lstrip("0") or "0"
-            cap = str(int(MAX_RETRY_AFTER_SECONDS))
-            if len(normalized) > len(cap) or (
-                len(normalized) == len(cap) and normalized > cap
-            ):
+            if len(normalized) > 6:
                 return MAX_RETRY_AFTER_SECONDS
-            return float(normalized)
+            return min(float(normalized), MAX_RETRY_AFTER_SECONDS)
 
         try:
             retry_at = parsedate_to_datetime(retry_after)
@@ -164,20 +164,18 @@ class BcutASR(BaseASR):
         if retry_at is None or retry_at.tzinfo is None:
             return None
 
-        return min(
-            max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds()),
-            MAX_RETRY_AFTER_SECONDS,
-        )
+        seconds = (retry_at - datetime.now(timezone.utc)).total_seconds()
+        return min(max(0.0, seconds), MAX_RETRY_AFTER_SECONDS)
 
     @staticmethod
-    def _result_retry_delay(attempt: int, retry_after: Optional[float]) -> float:
-        """Choose the next bounded result-poll retry delay."""
-        backoff = RESULT_RETRY_BACKOFF_SECONDS[
-            min(attempt - 1, len(RESULT_RETRY_BACKOFF_SECONDS) - 1)
-        ]
+    def _retry_delay(
+        backoff: tuple[float, ...], attempt: int, retry_after: Optional[float]
+    ) -> float:
+        """Return the bounded delay for one retry attempt."""
+        delay = backoff[min(attempt - 1, len(backoff) - 1)]
         if retry_after is not None:
-            backoff = max(backoff, retry_after)
-        return min(backoff, MAX_RETRY_AFTER_SECONDS)
+            delay = max(delay, retry_after)
+        return min(delay, MAX_RETRY_AFTER_SECONDS)
 
     def upload(self) -> None:
         """Request upload authorization and upload audio file."""
@@ -189,7 +187,7 @@ class BcutASR(BaseASR):
                 "name": "audio.mp3",
                 "size": len(self.file_binary),
                 "ResourceFileType": "mp3",
-                "model_id": BCUT_MODEL_ID,
+                "model_id": BCUT_TASK_MODEL_ID,
             }
         )
 
@@ -247,7 +245,7 @@ class BcutASR(BaseASR):
                 "ResourceId": self.__resource_id,
                 "Etags": ",".join(self.__etags) if self.__etags else "",
                 "UploadId": self.__upload_id,
-                "model_id": BCUT_MODEL_ID,
+                "model_id": BCUT_TASK_MODEL_ID,
             }
         )
         resp = self._request(
@@ -266,7 +264,7 @@ class BcutASR(BaseASR):
         resp = self._request(
             "POST",
             API_CREATE_TASK,
-            json={"resource": self.__download_url, "model_id": BCUT_MODEL_ID},
+            json={"resource": self.__download_url, "model_id": BCUT_TASK_MODEL_ID},
             headers=self.headers,
             timeout=REQUEST_TIMEOUT,
             operation="task creation",
@@ -282,11 +280,11 @@ class BcutASR(BaseASR):
         timeout: httpx.Timeout = REQUEST_TIMEOUT,
         _retry_transport: bool = False,
     ):
-        """Query ASR result."""
+        """Query ASR result using Bcut's upstream result-model contract."""
         resp = self._request(
             "GET",
             API_QUERY_RESULT,
-            params={"model_id": BCUT_MODEL_ID, "task_id": task_id or self.task_id},
+            params={"model_id": BCUT_RESULT_MODEL_ID, "task_id": task_id or self.task_id},
             headers=self.headers,
             timeout=timeout,
             operation="result",
@@ -316,9 +314,11 @@ class BcutASR(BaseASR):
 
         callback(*ASRStatus.TRANSCRIBING.callback_tuple())
 
-        # Poll against a wall-clock deadline so slow requests cannot extend the wait indefinitely.
+        # Successful jobs may take time, but repeated network/throttle failures get only a
+        # short bounded retry budget so they cannot masquerade as a ten-minute hang.
         deadline = time.monotonic() + POLLING_DEADLINE_SECONDS
-        retry_attempt = 0
+        transient_attempt = 0
+        throttle_attempt = 0
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -326,25 +326,62 @@ class BcutASR(BaseASR):
                     f"Bcut ASR polling exceeded the {POLLING_DEADLINE_SECONDS:g}-second deadline"
                 )
 
+            retry_after: Optional[float] = None
             try:
                 task_resp = self.result(
                     timeout=self._bounded_timeout(REQUEST_TIMEOUT, remaining),
                     _retry_transport=True,
                 )
             except httpx.HTTPStatusError as exc:
-                response = exc.response
-                status = response.status_code
-                if status not in RETRYABLE_RESULT_STATUS_CODES:
+                status = exc.response.status_code
+                retry_after = self._retry_after_seconds(exc.response)
+                if status in THROTTLE_RESULT_STATUS_CODES:
+                    throttle_attempt += 1
+                    transient_attempt = 0
+                    if throttle_attempt > MAX_THROTTLE_RESULT_RETRIES:
+                        raise RuntimeError(
+                            f"Bcut upstream throttled result polling with HTTP {status}"
+                        ) from None
+                    retry_kind = "throttle"
+                    retry_attempt = throttle_attempt
+                    retry_backoff = THROTTLE_RETRY_BACKOFF_SECONDS
+                elif status in TRANSIENT_RESULT_STATUS_CODES:
+                    transient_attempt += 1
+                    throttle_attempt = 0
+                    if transient_attempt > MAX_TRANSIENT_RESULT_RETRIES:
+                        raise RuntimeError(
+                            f"Bcut upstream result polling repeatedly failed with HTTP {status}"
+                        ) from None
+                    retry_kind = "transient"
+                    retry_attempt = transient_attempt
+                    retry_backoff = TRANSIENT_RETRY_BACKOFF_SECONDS
+                else:
                     raise
-                retry_after = self._retry_after_seconds(response)
             except httpx.TimeoutException:
                 status = "timeout"
-                retry_after = None
+                transient_attempt += 1
+                throttle_attempt = 0
+                if transient_attempt > MAX_TRANSIENT_RESULT_RETRIES:
+                    raise RuntimeError(
+                        "Bcut upstream result polling repeatedly timed out"
+                    ) from None
+                retry_kind = "transient"
+                retry_attempt = transient_attempt
+                retry_backoff = TRANSIENT_RETRY_BACKOFF_SECONDS
             except httpx.TransportError:
                 status = "transport"
-                retry_after = None
+                transient_attempt += 1
+                throttle_attempt = 0
+                if transient_attempt > MAX_TRANSIENT_RESULT_RETRIES:
+                    raise RuntimeError(
+                        "Bcut upstream result polling repeatedly hit transport errors"
+                    ) from None
+                retry_kind = "transient"
+                retry_attempt = transient_attempt
+                retry_backoff = TRANSIENT_RETRY_BACKOFF_SECONDS
             else:
-                retry_attempt = 0
+                transient_attempt = 0
+                throttle_attempt = 0
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise RuntimeError(
@@ -355,15 +392,18 @@ class BcutASR(BaseASR):
                 time.sleep(min(POLLING_INTERVAL_SECONDS, remaining))
                 continue
 
-            retry_attempt += 1
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise RuntimeError(
                     f"Bcut ASR polling exceeded the {POLLING_DEADLINE_SECONDS:g}-second deadline"
                 )
-            delay = min(self._result_retry_delay(retry_attempt, retry_after), remaining)
+            delay = min(
+                self._retry_delay(retry_backoff, retry_attempt, retry_after),
+                remaining,
+            )
             logger.warning(
-                "Bcut result retry status=%s attempt=%d delay=%g",
+                "Bcut result retry kind=%s status=%s attempt=%d delay=%g",
+                retry_kind,
                 status,
                 retry_attempt,
                 delay,

@@ -3,7 +3,7 @@ import os
 import sys
 from urllib.parse import urlparse
 
-from PyQt5.QtCore import QEvent, QStandardPaths, Qt, pyqtSignal
+from PyQt5.QtCore import QStandardPaths, Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
@@ -95,8 +95,6 @@ class TaskCreationInterface(QWidget):
         self.search_input.setPlaceholderText(self.tr("请拖拽文件或输入视频URL"))
         self.search_input.setFixedHeight(40)
         self.search_input.setClearButtonEnabled(True)
-        self.search_input.setAcceptDrops(True)
-        self.search_input.installEventFilter(self)
         self.search_input.focusOutEvent = lambda e: super(
             LineEdit, self.search_input
         ).focusOutEvent(e)
@@ -243,36 +241,23 @@ class TaskCreationInterface(QWidget):
             self.start_button.setIcon(FluentIcon.FOLDER)
 
     def dragEnterEvent(self, event):
-        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
-
-    def dragMoveEvent(self, event):
-        event.acceptProposedAction() if event.mimeData().hasUrls() else event.ignore()
+        event.accept() if event.mimeData().hasUrls() else event.ignore()
 
     def dropEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-            self.handle_dropped_files([u.toLocalFile() for u in event.mimeData().urls()])
-        else:
-            event.ignore()
-
-    def eventFilter(self, obj, event):
-        if obj is self.search_input and event.type() in (
-            QEvent.DragEnter,
-            QEvent.DragMove,
-            QEvent.Drop,
-        ):
-            if event.mimeData().hasUrls():
-                event.acceptProposedAction()
-                if event.type() == QEvent.Drop:
-                    self.handle_dropped_files(
-                        [u.toLocalFile() for u in event.mimeData().urls()]
-                    )
-                return True
-        return super().eventFilter(obj, event)
-
-    def handle_dropped_files(self, files):
+        files = [u.toLocalFile() for u in event.mimeData().urls()]
         for file_path in files:
-            if self.is_supported_media_file(file_path):
+            if not os.path.isfile(file_path):
+                continue
+
+            file_ext = os.path.splitext(file_path)[1][1:].lower()
+
+            # 检查文件格式是否支持
+            supported_formats = {fmt.value for fmt in SupportedVideoFormats} | {
+                fmt.value for fmt in SupportedAudioFormats
+            }
+            is_supported = file_ext in supported_formats
+
+            if is_supported:
                 self.search_input.setText(file_path)
                 self.status_label.setText(self.tr("导入成功"))
                 InfoBar.success(
@@ -281,26 +266,14 @@ class TaskCreationInterface(QWidget):
                     duration=INFOBAR_DURATION_SUCCESS,
                     parent=self,
                 )
-                return True
-
-        InfoBar.error(
-            self.tr("格式错误"),
-            self.tr("不支持该文件格式"),
-            duration=INFOBAR_DURATION_ERROR,
-            parent=self,
-        )
-        return False
-
-    @staticmethod
-    def is_supported_media_file(file_path):
-        if not file_path or not os.path.isfile(file_path):
-            return False
-
-        file_ext = os.path.splitext(file_path)[1][1:].lower()
-        supported_formats = {fmt.value for fmt in SupportedVideoFormats} | {
-            fmt.value for fmt in SupportedAudioFormats
-        }
-        return file_ext in supported_formats
+                break
+            else:
+                InfoBar.error(
+                    self.tr("格式错误") + file_ext,
+                    self.tr("不支持该文件格式"),
+                    duration=INFOBAR_DURATION_ERROR,
+                    parent=self,
+                )
 
     def create_task(self):
         search_input = self.search_input.text()

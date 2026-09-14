@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 import uuid
@@ -14,6 +15,14 @@ from videocaptioner.config import VERSION
 from .asr_data import ASRDataSeg
 from .base import BaseASR
 from .status import ASRStatus
+
+SIGN_SERVICE_URL = "https://asrtools-update.bkfeng.top/sign"
+SIGN_SERVICE_TIMEOUT = (10, 20)
+SIGN_RETRY_BACKOFF_SECONDS = (2.0, 5.0)
+SIGN_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+MAX_SIGN_RETRY_AFTER_SECONDS = 5.0
+
+logger = logging.getLogger(__name__)
 
 
 class JianYingASR(BaseASR):
@@ -151,37 +160,106 @@ class JianYingASR(BaseASR):
         ed = "3278516897751" if int(i) % 2 != 0 else f"{uuid.getnode():013d}"
         return f"{fr}{ed}"
 
+    @staticmethod
+    def _sign_retry_after_seconds(response: requests.Response) -> Optional[float]:
+        """Return a bounded numeric Retry-After value from the signing service."""
+        raw = response.headers.get("Retry-After", "").strip()
+        if not raw or not raw.isascii() or not raw.isdigit():
+            return None
+        normalized = raw.lstrip("0") or "0"
+        if len(normalized) > 6:
+            return MAX_SIGN_RETRY_AFTER_SECONDS
+        return min(float(normalized), MAX_SIGN_RETRY_AFTER_SECONDS)
+
     def _generate_sign_parameters(
         self, url: str, pf: str = "4", appvr: str = "6.6.0", tdid=""
     ) -> Tuple[str, str]:
-        """Generate request signature and timestamp via remote service."""
-        current_time = str(int(time.time()))
-        data = {
-            "url": url,
-            "current_time": current_time,
-            "pf": pf,
-            "appvr": appvr,
-            "tdid": self.tdid,
-        }
-        headers = {
-            "User-Agent": f"VideoCaptioner/{VERSION}",
-            "tdid": self.tdid,
-            "t": current_time,
-        }
-        # Replace with your actual endpoint URL
-        get_sign_url = "https://asrtools-update.bkfeng.top/sign"
-        try:
-            response = requests.post(get_sign_url, json=data, headers=headers)
-            response.raise_for_status()
-            response_data = response.json()
-            sign = response_data.get("sign")
-            if not sign:
-                raise ValueError("No 'sign' in response")
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"HTTP Request failed: {e}")
-        except ValueError as ve:
-            raise RuntimeError(f"Invalid response: {ve}")
-        return sign.lower(), current_time
+        """Generate request signature via the upstream service with bounded retries."""
+        del tdid
+        attempts = len(SIGN_RETRY_BACKOFF_SECONDS) + 1
+
+        for attempt in range(attempts):
+            current_time = str(int(time.time()))
+            data = {
+                "url": url,
+                "current_time": current_time,
+                "pf": pf,
+                "appvr": appvr,
+                "tdid": self.tdid,
+            }
+            headers = {
+                "User-Agent": f"VideoCaptioner/{VERSION}",
+                "tdid": self.tdid,
+                "t": current_time,
+            }
+
+            try:
+                response = requests.post(
+                    SIGN_SERVICE_URL,
+                    json=data,
+                    headers=headers,
+                    timeout=SIGN_SERVICE_TIMEOUT,
+                )
+            except (requests.Timeout, requests.ConnectionError):
+                if attempt >= attempts - 1:
+                    raise RuntimeError(
+                        "JianYing signing service is unavailable after bounded retries; "
+                        "use Bcut or retry later"
+                    ) from None
+                delay = SIGN_RETRY_BACKOFF_SECONDS[attempt]
+                logger.warning(
+                    "JianYing sign retry status=transport attempt=%d delay=%g",
+                    attempt + 1,
+                    delay,
+                )
+                time.sleep(delay)
+                continue
+            except requests.RequestException:
+                raise RuntimeError("JianYing signing service request failed") from None
+
+            if response.status_code in SIGN_RETRYABLE_STATUS_CODES:
+                if attempt >= attempts - 1:
+                    if response.status_code == 429:
+                        raise RuntimeError(
+                            "JianYing signing service is throttled with HTTP 429; "
+                            "use Bcut or retry later"
+                        ) from None
+                    raise RuntimeError(
+                        f"JianYing signing service repeatedly failed with HTTP {response.status_code}; "
+                        "use Bcut or retry later"
+                    ) from None
+
+                retry_after = self._sign_retry_after_seconds(response)
+                delay = SIGN_RETRY_BACKOFF_SECONDS[attempt]
+                if retry_after is not None:
+                    delay = max(delay, retry_after)
+                delay = min(delay, MAX_SIGN_RETRY_AFTER_SECONDS)
+                logger.warning(
+                    "JianYing sign retry status=%d attempt=%d delay=%g",
+                    response.status_code,
+                    attempt + 1,
+                    delay,
+                )
+                time.sleep(delay)
+                continue
+
+            try:
+                response.raise_for_status()
+            except requests.RequestException:
+                raise RuntimeError(
+                    f"JianYing signing service rejected the request with HTTP {response.status_code}"
+                ) from None
+
+            try:
+                response_data = response.json()
+                sign = response_data.get("sign")
+            except (ValueError, AttributeError):
+                raise RuntimeError("JianYing signing service returned an invalid response") from None
+            if not isinstance(sign, str) or not sign:
+                raise RuntimeError("JianYing signing service returned no signature")
+            return sign.lower(), current_time
+
+        raise RuntimeError("JianYing signing service retry loop exhausted")
 
     def _build_headers(self, device_time: str, sign: str) -> Dict[str, str]:
         """Build request headers with signature."""

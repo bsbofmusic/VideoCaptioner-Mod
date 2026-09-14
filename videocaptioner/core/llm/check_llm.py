@@ -4,15 +4,11 @@ from typing import Literal, Optional
 
 import openai
 
-from videocaptioner.core.entities import LLMServiceEnum
-from videocaptioner.core.llm.client import _call_anthropic_messages, normalize_base_url
+from videocaptioner.core.llm.client import normalize_base_url
 
 
 def check_llm_connection(
-    base_url: str,
-    api_key: str,
-    model: str,
-    llm_service: Optional[LLMServiceEnum] = None,
+    base_url: str, api_key: str, model: str
 ) -> tuple[Literal[True], Optional[str]] | tuple[Literal[False], Optional[str]]:
     """测试 LLM API 连接
 
@@ -30,26 +26,6 @@ def check_llm_connection(
         # 创建OpenAI客户端并发送请求到API
         base_url = normalize_base_url(base_url)
         api_key = api_key.strip()
-        if llm_service == LLMServiceEnum.CODEX:
-            response = openai.OpenAI(
-                base_url=base_url, api_key=api_key, timeout=60
-            ).responses.create(
-                model=model,
-                input='Just respond with "Hello"!',
-                timeout=30,
-            )
-            return True, _extract_responses_text(response)
-        if llm_service == LLMServiceEnum.ANTHROPIC:
-            response = _call_anthropic_messages(
-                model=model,
-                messages=[{"role": "user", "content": 'Just respond with "Hello"!'}],
-                base_url=base_url,
-                api_key=api_key,
-                timeout=30,
-                max_tokens=128,
-            )
-            return True, response.choices[0].message.content
-
         response = openai.OpenAI(
             base_url=base_url, api_key=api_key, timeout=60
         ).chat.completions.create(
@@ -73,20 +49,6 @@ def check_llm_connection(
         return False, "OpenAI Error: " + str(e)
     except Exception as e:
         return False, str(e)
-
-
-def _extract_responses_text(response) -> str:
-    content = getattr(response, "output_text", None)
-    if content:
-        return str(content)
-
-    parts: list[str] = []
-    for item in getattr(response, "output", None) or []:
-        for content_item in getattr(item, "content", None) or []:
-            text = getattr(content_item, "text", None)
-            if text:
-                parts.append(str(text))
-    return "".join(parts)
 
 
 def get_available_models(base_url: str, api_key: str) -> list[str]:

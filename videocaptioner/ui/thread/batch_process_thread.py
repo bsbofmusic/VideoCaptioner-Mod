@@ -1,8 +1,7 @@
 import queue
 import time
 from functools import partial
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
@@ -12,17 +11,12 @@ from videocaptioner.core.entities import (
     TranscribeTask,
 )
 from videocaptioner.core.utils.logger import setup_logger
-from videocaptioner.core.utils.path_utils import sanitize_path_component
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.subtitle_thread import SubtitleThread
 from videocaptioner.ui.thread.transcript_thread import TranscriptThread
 from videocaptioner.ui.thread.video_synthesis_thread import VideoSynthesisThread
 
 logger = setup_logger("batch_process_thread")
-
-
-class BatchPreflightError(RuntimeError):
-    """Non-retryable error raised before a batch worker thread starts."""
 
 
 class BatchTask:
@@ -98,102 +92,6 @@ class BatchProcessThread(QThread):
             batch_task.error_message = str(e)
             self.task_error.emit(batch_task.file_path, str(e))
 
-    def _emit_preflight_progress(
-        self, batch_task: BatchTask, message: str, progress: Optional[int] = None
-    ):
-        if progress is None:
-            progress = batch_task.progress
-        batch_task.progress = progress
-        self.task_progress.emit(batch_task.file_path, progress, message)
-
-    def _preflight_concrete_task(
-        self, batch_task: BatchTask, concrete_task: Any, stage_name: str
-    ):
-        self._emit_preflight_progress(batch_task, f"检查{stage_name}路径...", 0)
-
-        for attr_name, label in (
-            ("file_path", "输入文件"),
-            ("video_path", "视频文件"),
-            ("subtitle_path", "字幕文件"),
-        ):
-            value = getattr(concrete_task, attr_name, None)
-            if not value:
-                continue
-            repaired = self._repair_missing_input_path(value)
-            if repaired != value:
-                setattr(concrete_task, attr_name, repaired)
-            self._assert_input_file(repaired, label)
-
-        output_path = getattr(concrete_task, "output_path", None)
-        if output_path is not None:
-            repaired_output_path = self._sanitize_output_path(output_path)
-            if Path(repaired_output_path) != Path(output_path):
-                setattr(concrete_task, "output_path", repaired_output_path)
-            self._ensure_output_parent_writable(repaired_output_path)
-
-        logger.info("%s - preflight ok for %s", batch_task.file_path, stage_name)
-        self._emit_preflight_progress(batch_task, "路径检查通过")
-
-    @staticmethod
-    def _repair_missing_input_path(path_text: str) -> str:
-        path = Path(path_text)
-        if path.exists():
-            return path_text
-
-        safe_name = sanitize_path_component(path.name, default=path.name or "input")
-        candidate = path.with_name(safe_name)
-        if candidate != path and candidate.exists():
-            return str(candidate)
-        return path_text
-
-    @staticmethod
-    def _assert_input_file(path_text: str, label: str):
-        path = Path(path_text)
-        if not path.exists():
-            raise BatchPreflightError(f"{label}不存在: {path}")
-        if not path.is_file():
-            raise BatchPreflightError(f"{label}不是文件: {path}")
-
-    @staticmethod
-    def _sanitize_output_path(path_text: str) -> str:
-        path = Path(path_text)
-        parts = path.parts
-        if not parts:
-            raise BatchPreflightError("输出路径为空")
-
-        if path.is_absolute():
-            repaired = Path(parts[0])
-            remaining_parts = parts[1:]
-        else:
-            repaired = Path(sanitize_path_component(parts[0], default="output"))
-            remaining_parts = parts[1:]
-
-        for part in remaining_parts:
-            repaired = repaired / sanitize_path_component(part, default="output")
-        return str(repaired)
-
-    @staticmethod
-    def _ensure_output_parent_writable(path_text: str):
-        if not path_text:
-            raise BatchPreflightError("输出路径为空")
-
-        parent = Path(path_text).parent
-        try:
-            parent.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            raise BatchPreflightError(f"无法创建输出目录 {parent}: {e}") from e
-
-        probe = parent / f".videocaptioner_preflight_{time.time_ns()}.tmp"
-        try:
-            probe.write_text("", encoding="utf-8")
-        except Exception as e:
-            raise BatchPreflightError(f"输出目录不可写 {parent}: {e}") from e
-        finally:
-            try:
-                probe.unlink(missing_ok=True)
-            except Exception:
-                pass
-
     def _on_progress_wrapper(self, batch_task: BatchTask, progress: int, message: str):
         """进度信号包装器"""
         self.task_progress.emit(batch_task.file_path, progress, message)
@@ -215,7 +113,6 @@ class BatchProcessThread(QThread):
     def _handle_transcribe_task(self, batch_task: BatchTask):
         # self.max_concurrent_tasks = 3
         task = self.factory.create_transcribe_task(batch_task.file_path)
-        self._preflight_concrete_task(batch_task, task, "转录")
         thread = TranscriptThread(task)
         batch_task.current_thread = thread
 
@@ -238,7 +135,6 @@ class BatchProcessThread(QThread):
         logger.info(f"开始处理字幕任务: {batch_task.file_path}")
 
         task = self.factory.create_subtitle_task(batch_task.file_path)
-        self._preflight_concrete_task(batch_task, task, "字幕")
         thread = SubtitleThread(task)
         batch_task.current_thread = thread
 
@@ -261,7 +157,6 @@ class BatchProcessThread(QThread):
         trans_task = self.factory.create_transcribe_task(
             batch_task.file_path, need_next_task=True
         )
-        self._preflight_concrete_task(batch_task, trans_task, "转录")
         thread = TranscriptThread(trans_task)
         batch_task.current_thread = thread
         self.current_tasks[batch_task.file_path] = batch_task
@@ -299,7 +194,6 @@ class BatchProcessThread(QThread):
         subtitle_task = self.factory.create_subtitle_task(
             task.output_path, batch_task.file_path, need_next_task=True
         )
-        self._preflight_concrete_task(batch_task, subtitle_task, "字幕")
         thread = SubtitleThread(subtitle_task)
         batch_task.current_thread = thread
         self.current_tasks[batch_task.file_path] = batch_task
@@ -327,7 +221,6 @@ class BatchProcessThread(QThread):
         trans_task = self.factory.create_transcribe_task(
             batch_task.file_path, need_next_task=True
         )
-        self._preflight_concrete_task(batch_task, trans_task, "转录")
         thread = TranscriptThread(trans_task)
         batch_task.current_thread = thread
 
@@ -361,7 +254,6 @@ class BatchProcessThread(QThread):
             batch_task.file_path,
             need_next_task=True,
         )
-        self._preflight_concrete_task(batch_task, subtitle_task, "字幕")
         thread = SubtitleThread(subtitle_task)
         batch_task.current_thread = thread
 
@@ -395,7 +287,6 @@ class BatchProcessThread(QThread):
 
         # 字幕完成后创建视频合成任务
         synthesis_task = self.factory.create_synthesis_task(video_path, subtitle_path)
-        self._preflight_concrete_task(batch_task, synthesis_task, "合成")
         thread = VideoSynthesisThread(synthesis_task)
         batch_task.current_thread = thread
 

@@ -20,11 +20,11 @@ AI-powered video captioning: transcribe speech → optimize subtitles → transl
 
 **Always run `videocaptioner <command> --help` first** to check the latest options and defaults before executing a command. The examples below are common patterns, but --help is the source of truth.
 
-- Download the VideoCaptioner-Mod wheel from GitHub Releases, then install that wheel path;
-  append `[gui]`, `[dubbing]`, or `[all]` to the path for optional features. The bare PyPI
-  name belongs to the upstream project, not this Mod release channel.
-- FFmpeg required for video synthesis (`brew install ffmpeg` on macOS)
-- **Free (no API key):** transcription (bijian/jianying), translation (Bing/Google)
+- Install CLI core: `pip install videocaptioner`; GUI only when needed: `pip install 'videocaptioner[gui]'`
+- FFmpeg + FFprobe are required for media workflows. On the managed VPS they are provisioned beside the isolated VideoCaptioner environment.
+- **Free (no API key):** Bcut/`bijian` transcription is the primary path; Google translation is available without an LLM key.
+- **JianYing boundary:** the client-side local quota is kept fresh/full, but JianYing still depends on the upstream remote signing service and can return HTTP 429. Fall back to Bcut rather than treating remote throttling as a local quota failure.
+- **Bing boundary:** the legacy free Edge auth endpoint is retired/404; do not select Bing as the default free translator.
 - **Requires LLM API key:** subtitle optimization, subtitle re-segmentation, LLM translation. Set via `OPENAI_API_KEY` env var or `--api-key` flag
 
 ## Common scenarios
@@ -32,7 +32,7 @@ AI-powered video captioning: transcribe speech → optimize subtitles → transl
 ### 1. Give a Chinese video English subtitles (one command, all free)
 
 ```bash
-videocaptioner process video.mp4 --asr bijian --translator bing --target-language en \
+videocaptioner process video.mp4 --asr bijian --translator google --target-language en \
   --subtitle-mode hard --quality high -o output.mp4
 ```
 
@@ -48,8 +48,8 @@ videocaptioner transcribe video.mp4 --asr bijian --format json -o ./subtitles/
 ### 3. Translate existing subtitles
 
 ```bash
-# Free Bing → English, bilingual output with translation above original
-videocaptioner subtitle input.srt --translator bing --target-language en --layout target-above -o translated.srt
+# Free Google → English, bilingual output with translation above original
+videocaptioner subtitle input.srt --translator google --target-language en --layout target-above -o translated.srt
 
 # Free Google → Japanese, translation only (discard original text)
 videocaptioner subtitle input.srt --translator google --target-language ja --no-optimize --layout target-only -o output_ja.srt
@@ -63,7 +63,7 @@ videocaptioner subtitle input.srt --translator llm --target-language en --reflec
 
 ```bash
 # Anime-style subtitles (warm color + orange outline), high quality video
-videocaptioner process video.mp4 --asr bijian --translator bing --target-language ja \
+videocaptioner process video.mp4 --asr bijian --translator google --target-language ja \
   --subtitle-mode hard --style anime --quality high -o output_ja.mp4
 
 # Modern rounded background subtitles
@@ -71,7 +71,7 @@ videocaptioner process video.mp4 --asr bijian --translator google --target-langu
   --subtitle-mode hard --render-mode rounded -o output_ko.mp4
 
 # Custom colors: white text with red outline, ultra quality
-videocaptioner process video.mp4 --asr bijian --translator bing --target-language en \
+videocaptioner process video.mp4 --asr bijian --translator google --target-language en \
   --subtitle-mode hard --quality ultra \
   --style-override '{"outline_color": "#ff0000", "primary_color": "#ffffff"}' -o output_en.mp4
 ```
@@ -79,7 +79,7 @@ videocaptioner process video.mp4 --asr bijian --translator bing --target-languag
 ### 5. Subtitle only, output as ASS format (no video synthesis)
 
 ```bash
-videocaptioner process video.mp4 --asr bijian --translator bing --target-language en \
+videocaptioner process video.mp4 --asr bijian --translator google --target-language en \
   --format ass --no-synthesize -o ./output/
 ```
 
@@ -90,7 +90,7 @@ videocaptioner process video.mp4 --asr bijian --translator bing --target-languag
 videocaptioner transcribe video.mp4 --asr bijian -o video.srt
 
 # Step 2: Translate (bilingual, original text above translation)
-videocaptioner subtitle video.srt --translator bing --target-language en --layout source-above -o video_en.srt
+videocaptioner subtitle video.srt --translator google --target-language en --layout source-above -o video_en.srt
 
 # Step 3: Burn into video with rounded background, high quality
 videocaptioner synthesize video.mp4 -s video_en.srt --subtitle-mode hard \
@@ -100,7 +100,7 @@ videocaptioner synthesize video.mp4 -s video_en.srt --subtitle-mode hard \
 ### 7. Process audio file (auto-skips video synthesis)
 
 ```bash
-videocaptioner process podcast.mp3 --asr bijian --translator bing --target-language en -o ./output/
+videocaptioner process podcast.mp3 --asr bijian --translator google --target-language en -o ./output/
 ```
 
 ### 8. Transcribe other languages (whisper-api)
@@ -128,8 +128,8 @@ videocaptioner synthesize video.mp4 -s subtitle.srt --subtitle-mode hard \
 
 | Command | Purpose |
 |---------|---------|
-| `transcribe` | Speech → subtitles. Engines: `bijian`(free) `jianying`(free) `whisper-api` `whisper-cpp` |
-| `subtitle` | Optimize (LLM) and/or translate (LLM/Bing/Google) subtitle files |
+| `transcribe` | Speech → subtitles. Engines: `bijian` (primary free path), `jianying` (remote signer may throttle), `whisper-api`, `whisper-cpp` |
+| `subtitle` | Optimize (LLM) and/or translate (LLM/Google; Bing kept only as a legacy compatibility entry) subtitle files |
 | `synthesize` | Burn subtitles into video with customizable styles |
 | `process` | Full pipeline: transcribe → optimize → translate → synthesize |
 | `download` | Download video from YouTube, Bilibili, etc. |
@@ -170,6 +170,6 @@ BCP 47 codes: `zh-Hans` `zh-Hant` `en` `ja` `ko` `fr` `de` `es` `ru` `pt` `it` `
 ## Tips
 
 - Use `-q` for scripting (stdout = result path only)
-- Bing/Google translation is free, no API key needed
-- `bijian`/`jianying` ASR is free but only supports Chinese & English
+- Google translation needs no LLM API key; legacy Bing free auth currently returns 404 and should not be the default.
+- `bijian` is the preferred free ASR path. `jianying` uses the same fresh local quota policy but may be unavailable when its upstream signing service is throttled.
 - Run `videocaptioner style` to see all style presets

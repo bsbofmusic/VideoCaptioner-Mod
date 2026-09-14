@@ -213,11 +213,11 @@ def validate_dubbing(config: dict, *, needs_video: bool = False, rewrite: bool =
     timing = get(config, "dubbing.timing", "balanced")
     audio_mode = get(config, "dubbing.audio_mode", "replace")
 
-    if provider not in {"siliconflow", "gemini", "edge"}:
+    if provider not in {"siliconflow", "gemini"}:
         output.error(f"Unsupported dubbing provider: {provider}")
-        output.hint("Supported providers: siliconflow, gemini, edge")
+        output.hint("Supported providers: siliconflow, gemini")
         return False
-    if provider != "edge" and not api_key:
+    if not api_key:
         output.config_missing_error(
             "TTS API key",
             "dubbing.api_key",
@@ -225,7 +225,7 @@ def validate_dubbing(config: dict, *, needs_video: bool = False, rewrite: bool =
             "--tts-api-key",
         )
         return False
-    if provider != "edge" and not model:
+    if not model:
         output.config_missing_error(
             "TTS model",
             "dubbing.model",

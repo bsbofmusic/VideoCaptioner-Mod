@@ -116,34 +116,6 @@ class SettingInterface(ScrollArea):
             texts=[lang.value for lang in cfg.target_language.validator.options],  # type: ignore
             parent=self.translateGroup,
         )
-        self.optimizeThreadNumCard = RangeSettingCard(
-            cfg.optimize_thread_num,
-            FIF.SPEED_HIGH,
-            self.tr("校对并发数"),
-            self.tr("字幕校对请求的并行数量"),
-            parent=self.translateGroup,
-        )
-        self.optimizeBatchSizeCard = RangeSettingCard(
-            cfg.optimize_batch_size,
-            FIF.ALIGNMENT,
-            self.tr("校对批次大小"),
-            self.tr("每批提交给大模型校对的字幕数量"),
-            parent=self.translateGroup,
-        )
-        self.optimizeTimeoutCard = RangeSettingCard(
-            cfg.optimize_timeout_seconds,
-            FIF.STOP_WATCH,
-            self.tr("校对超时秒数"),
-            self.tr("单次校对请求允许等待的最长时间"),
-            parent=self.translateGroup,
-        )
-        self.optimizeRetryCard = RangeSettingCard(
-            cfg.optimize_retry_count,
-            FIF.SYNC,
-            self.tr("校对重试次数"),
-            self.tr("校对验证失败后允许重新请求的次数"),
-            parent=self.translateGroup,
-        )
 
         # 字幕合成配置卡片
         self.subtitleStyleCard = HyperlinkCard(
@@ -265,10 +237,6 @@ class SettingInterface(ScrollArea):
 
         # 添加卡片到对应的组
         self.translateGroup.addSettingCard(self.subtitleCorrectCard)
-        self.translateGroup.addSettingCard(self.optimizeThreadNumCard)
-        self.translateGroup.addSettingCard(self.optimizeBatchSizeCard)
-        self.translateGroup.addSettingCard(self.optimizeTimeoutCard)
-        self.translateGroup.addSettingCard(self.optimizeRetryCard)
         self.translateGroup.addSettingCard(self.subtitleTranslateCard)
         self.translateGroup.addSettingCard(self.targetLanguageCard)
 
@@ -330,22 +298,6 @@ class SettingInterface(ScrollArea):
                     "gemini-2.5-flash",
                     "claude-haiku-4-5-20251001",
                 ],
-            },
-            LLMServiceEnum.CODEX: {
-                "prefix": "codex",
-                "api_key_cfg": cfg.codex_api_key,
-                "api_base_cfg": cfg.codex_api_base,
-                "model_cfg": cfg.codex_model,
-                "default_base": "https://api.openai.com/v1",
-                "default_models": ["gpt-5.3-codex", "gpt-5.2-codex"],
-            },
-            LLMServiceEnum.ANTHROPIC: {
-                "prefix": "anthropic",
-                "api_key_cfg": cfg.anthropic_api_key,
-                "api_base_cfg": cfg.anthropic_api_base,
-                "model_cfg": cfg.anthropic_model,
-                "default_base": "https://api.minimaxi.com/anthropic/v1",
-                "default_models": ["MiniMax-M2.7", "claude-sonnet-4-5-20250929"],
             },
             LLMServiceEnum.SILICON_CLOUD: {
                 "prefix": "silicon_cloud",
@@ -436,8 +388,6 @@ class SettingInterface(ScrollArea):
             # 设置只读状态：只有 OpenAI、Ollama、LM Studio 可以编辑 Base URL
             if service not in [
                 LLMServiceEnum.OPENAI,
-                LLMServiceEnum.CODEX,
-                LLMServiceEnum.ANTHROPIC,
                 LLMServiceEnum.OLLAMA,
                 LLMServiceEnum.LM_STUDIO,
             ]:
@@ -624,8 +574,6 @@ class SettingInterface(ScrollArea):
             self.translatorServiceCard.comboBox.currentText()
         )
 
-        self.__onSubtitleOptimizeChanged(cfg.need_optimize.value)
-
         self.setStyleSheet(
             """
             SettingInterface, #scrollWidget {
@@ -732,7 +680,6 @@ class SettingInterface(ScrollArea):
         self.subtitleCorrectCard.checkedChanged.connect(
             signalBus.subtitle_optimization_changed
         )
-        self.subtitleCorrectCard.checkedChanged.connect(self.__onSubtitleOptimizeChanged)
         self.subtitleTranslateCard.checkedChanged.connect(
             signalBus.subtitle_translation_changed
         )
@@ -818,9 +765,7 @@ class SettingInterface(ScrollArea):
         self.verticalScrollBar().setValue(scroll_position)
 
         # 创建并启动线程
-        self.connection_thread = LLMConnectionThread(
-            api_base, api_key, model, current_service
-        )
+        self.connection_thread = LLMConnectionThread(api_base, api_key, model)
         self.connection_thread.finished.connect(self.onConnectionCheckFinished)
         self.connection_thread.error.connect(self.onConnectionCheckError)
         self.connection_thread.start()
@@ -936,17 +881,6 @@ class SettingInterface(ScrollArea):
 
         # 更新布局
         self.translate_serviceGroup.adjustSize()
-        self.expandLayout.update()
-
-    def __onSubtitleOptimizeChanged(self, enabled: bool):
-        for card in [
-            self.optimizeThreadNumCard,
-            self.optimizeBatchSizeCard,
-            self.optimizeTimeoutCard,
-            self.optimizeRetryCard,
-        ]:
-            card.setEnabled(enabled)
-        self.translateGroup.adjustSize()
         self.expandLayout.update()
 
     def __onTranscribeModelChanged(self, model_name):
@@ -1085,18 +1019,17 @@ class LLMConnectionThread(QThread):
     finished = pyqtSignal(bool, str, list)
     error = pyqtSignal(str)
 
-    def __init__(self, api_base, api_key, model, llm_service):
+    def __init__(self, api_base, api_key, model):
         super().__init__()
         self.api_base = api_base
         self.api_key = api_key
         self.model = model
-        self.llm_service = llm_service
 
     def run(self):
         """检查 LLM 连接并获取模型列表"""
         try:
             is_success, message = check_llm_connection(
-                self.api_base, self.api_key, self.model, self.llm_service
+                self.api_base, self.api_key, self.model
             )
             models = get_available_models(self.api_base, self.api_key)
             self.finished.emit(is_success, message, models)

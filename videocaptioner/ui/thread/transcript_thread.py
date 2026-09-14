@@ -36,23 +36,8 @@ class TranscriptThread(QThread):
 
         except Exception as e:
             logger.exception("转录过程中发生错误: %s", str(e))
-            self.error.emit(self._friendly_error_message(e))
+            self.error.emit(str(e))
             self.progress.emit(100, self.tr("转录失败"))
-
-    def _friendly_error_message(self, error: Exception) -> str:
-        """Convert known backend errors to user-facing messages."""
-        message = str(error)
-        if "duration limit exceeded" in message:
-            return self.tr(
-                "公益 ASR 服务在 12 小时窗口内的本地时长限额已用尽。"
-                "请稍后重试，或切换到 Whisper API / FasterWhisper。"
-            )
-        if "call count limit exceeded" in message:
-            return self.tr(
-                "公益 ASR 服务在 12 小时窗口内的本地调用次数限额已用尽。"
-                "请稍后重试，或切换到 Whisper API / FasterWhisper。"
-            )
-        return message
 
     def _validate_task(self):
         """验证任务配置"""

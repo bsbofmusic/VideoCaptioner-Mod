@@ -13,7 +13,6 @@ def test_available_presets_include_main_providers():
 
     assert "siliconflow-cn-female" in presets
     assert "gemini-en-friendly" in presets
-    assert "edge-cn-female" in presets
 
 
 def test_get_dubbing_preset():
@@ -40,15 +39,3 @@ def test_validate_gemini_unknown_voice():
 
     assert error is not None
     assert "Unknown Gemini voice" in error
-
-
-def test_normalize_edge_short_voice_alias():
-    voice = normalize_dubbing_voice("edge", "edge-tts", "xiaoxiao")
-
-    assert voice == "zh-CN-XiaoxiaoNeural"
-
-
-def test_validate_edge_voice_alias_and_full_id():
-    assert validate_dubbing_voice("edge", "xiaoxiao") is None
-    assert validate_dubbing_voice("edge", "zh-CN-XiaoxiaoNeural") is None
-    assert "Edge TTS voice" in (validate_dubbing_voice("edge", "badvoice") or "")

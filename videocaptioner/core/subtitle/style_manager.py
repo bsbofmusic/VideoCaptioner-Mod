@@ -267,8 +267,7 @@ def load_style(
               ``ass-default.json``.
 
     Searches by: exact filename match, prefixed filename (ass-X, rounded-X),
-    or JSON 'name' field. Legacy persisted names are mapped to their canonical
-    preset before mode-aware filename lookup.
+    or JSON 'name' field.
     """
     name = LEGACY_STYLE_ALIASES.get(name, name)
 

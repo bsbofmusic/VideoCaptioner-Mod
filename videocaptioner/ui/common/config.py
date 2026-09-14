@@ -89,16 +89,6 @@ class Config(QConfig):
     openai_api_key = ConfigItem("LLM", "OpenAI_API_Key", "")
     openai_api_base = ConfigItem("LLM", "OpenAI_API_Base", "https://api.openai.com/v1")
 
-    codex_model = ConfigItem("LLM", "Codex_Model", "gpt-5.3-codex")
-    codex_api_key = ConfigItem("LLM", "Codex_API_Key", "")
-    codex_api_base = ConfigItem("LLM", "Codex_API_Base", "https://api.openai.com/v1")
-
-    anthropic_model = ConfigItem("LLM", "Anthropic_Model", "MiniMax-M2.7")
-    anthropic_api_key = ConfigItem("LLM", "Anthropic_API_Key", "")
-    anthropic_api_base = ConfigItem(
-        "LLM", "Anthropic_API_Base", "https://api.minimaxi.com/anthropic/v1"
-    )
-
     silicon_cloud_model = ConfigItem("LLM", "SiliconCloud_Model", "gpt-4o-mini")
     silicon_cloud_api_key = ConfigItem("LLM", "SiliconCloud_API_Key", "")
     silicon_cloud_api_base = ConfigItem(
@@ -248,18 +238,6 @@ class Config(QConfig):
         "Subtitle", "MaxWordCountEnglish", 20, RangeValidator(8, 100)
     )
     custom_prompt_text = ConfigItem("Subtitle", "CustomPromptText", "")
-    optimize_thread_num = RangeConfigItem(
-        "Subtitle", "OptimizeThreadNum", 10, RangeValidator(1, 20)
-    )
-    optimize_batch_size = RangeConfigItem(
-        "Subtitle", "OptimizeBatchSize", 50, RangeValidator(10, 100)
-    )
-    optimize_timeout_seconds = RangeConfigItem(
-        "Subtitle", "OptimizeTimeoutSeconds", 90, RangeValidator(90, 600)
-    )
-    optimize_retry_count = RangeConfigItem(
-        "Subtitle", "OptimizeRetryCount", 3, RangeValidator(3, 50)
-    )
 
     # ------------------- 字幕合成配置 -------------------
     soft_subtitle = ConfigItem("Video", "SoftSubtitle", False, BoolValidator())

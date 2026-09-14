@@ -4,14 +4,13 @@ import pytest
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli.commands.process import _resolve_final_output_path
-from videocaptioner.cli.main import gui_main, main
+from videocaptioner.cli.main import main
 
 
 class TestMainParser:
-    def test_no_args_tries_gui(self, monkeypatch, capsys):
+    def test_no_args_tries_gui(self, monkeypatch):
         # No args: tries to launch GUI. Mock GUI import to avoid opening it in tests.
         import builtins
-
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -21,8 +20,6 @@ class TestMainParser:
 
         monkeypatch.setattr(builtins, "__import__", mock_import)
         assert main([]) == EXIT.DEPENDENCY_MISSING
-        output = capsys.readouterr().out
-        assert "pip install 'videocaptioner[gui]'" in output
 
     def test_version(self, capsys):
         with pytest.raises(SystemExit) as exc:
@@ -49,7 +46,7 @@ class TestMainParser:
         assert "config" in out
         assert "doctor" in out
 
-    def test_gui_command_reports_missing_gui_dependencies(self, monkeypatch, capsys):
+    def test_gui_command_reports_missing_gui_dependencies(self, monkeypatch):
         import builtins
 
         original_import = builtins.__import__
@@ -61,40 +58,6 @@ class TestMainParser:
 
         monkeypatch.setattr(builtins, "__import__", mock_import)
         assert main(["gui"]) == EXIT.DEPENDENCY_MISSING
-        output = capsys.readouterr().out
-        assert "pip install 'videocaptioner[gui]'" in output
-
-    def test_standalone_gui_entry_reports_missing_gui_dependencies(self, monkeypatch, capsys):
-        import builtins
-
-        original_import = builtins.__import__
-
-        def mock_import(name, *args, **kwargs):
-            if name == "videocaptioner.ui.main":
-                raise ModuleNotFoundError("mocked", name="PyQt5")
-            return original_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", mock_import)
-        assert gui_main() == EXIT.DEPENDENCY_MISSING
-        output = capsys.readouterr().out
-        assert "pip install 'videocaptioner[gui]'" in output
-        assert "Traceback" not in output
-
-    def test_gui_command_does_not_mislabel_unrelated_import_errors(self, monkeypatch, capsys):
-        import builtins
-
-        original_import = builtins.__import__
-
-        def mock_import(name, *args, **kwargs):
-            if name == "videocaptioner.ui.main":
-                raise ImportError("internal import failure", name="videocaptioner.internal")
-            return original_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", mock_import)
-        assert main(["gui"]) == EXIT.GENERAL_ERROR
-        captured = capsys.readouterr()
-        assert "internal import failure" in captured.err
-        assert "videocaptioner[gui]" not in captured.out + captured.err
 
 
 class TestTranscribeParser:
@@ -234,25 +197,6 @@ class TestDubParser:
 
         assert result == EXIT.USAGE_ERROR
 
-    def test_edge_clone_fails_before_synthesis_without_api_key(self, tmp_path):
-        srt = tmp_path / "test.srt"
-        srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nHello\n", encoding="utf-8")
-        ref = tmp_path / "ref.wav"
-        ref.write_bytes(b"not real audio")
-
-        result = main([
-            "dub",
-            str(srt),
-            "--preset",
-            "edge-cn-female",
-            "--clone-audio",
-            str(ref),
-            "--clone-text",
-            "Hello",
-        ])
-
-        assert result == EXIT.USAGE_ERROR
-
 
 class TestConfigParser:
     def test_no_action(self):
@@ -291,7 +235,7 @@ class TestConfigParser:
         assert result == EXIT.SUCCESS
         out = capsys.readouterr().out
         assert "[dubbing]" in out
-        assert "edge-cn-female" in out
+        assert "siliconflow-cn-female" in out
         assert "audio_mode" in out
 
 

@@ -4,7 +4,7 @@ dynamic = ["version"]
 description = "AI-powered video captioning tool — ASR, subtitle optimization, translation, and synthesis"
 readme = "README.md"
 license = { text = "GPL-3.0" }
-authors = [{ name = "Weifeng" }]
+authors = [{ name = "Weifeng" }, { name = "bsbofmusic" }]
 requires-python = ">=3.10,<3.13"
 keywords = ["video", "caption", "subtitle", "asr", "llm", "translation", "cli"]
 classifiers = [
@@ -44,16 +44,14 @@ gui = [
     "psutil>=7.0.0",
     "GPUtil>=1.4.0",
 ]
-dubbing = [
-    "edge-tts>=7.2.8",
-]
+# Upstream v1.4.2 dubbing uses dependencies already present in the CLI core.
+dubbing = []
 all = [
     "PyQt5==5.15.11",
     "PyQt-Fluent-Widgets==1.8.4",
     "modelscope>=1.32.0",
     "psutil>=7.0.0",
     "GPUtil>=1.4.0",
-    "edge-tts>=7.2.8",
 ]
 
 [project.urls]
@@ -80,6 +78,7 @@ version-file = "videocaptioner/_version.py"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
+    "resource/fonts/",
     "docs/",
     "legacy-docs/",
     "work-dir/",
@@ -108,9 +107,7 @@ override-dependencies = [
     "PyQt5-Qt5==5.15.2; sys_platform == 'win32'",
     "PyQt5-Qt5>=5.15.11; sys_platform != 'win32'",
 ]
-
-[dependency-groups]
-dev = [
+dev-dependencies = [
     "pyright>=1.1.0",
     "ruff>=0.4.0",
     "pytest>=8.0.0",
@@ -120,7 +117,6 @@ dev = [
     "modelscope>=1.32.0",
     "psutil>=7.0.0",
     "GPUtil>=1.4.0",
-    "edge-tts>=7.2.8",
 ]
 
 [tool.pyright]

@@ -141,9 +141,9 @@ def _interactive_init(args: Namespace, config_data: dict) -> int:
         _set_nested(config_data, "llm.model", _prompt(f"LLM model [{DEFAULTS['llm']['model']}]: ", DEFAULTS["llm"]["model"]))
         print()
         print("Dubbing config is used by 'dub' and 'process --dub-only'.")
-        _set_nested(config_data, "dubbing.preset", _prompt("Dubbing preset [edge-cn-female] (no API key): ", "edge-cn-female"))
-        _set_nested(config_data, "dubbing.api_key", _prompt("TTS API key [skip; only needed for SiliconFlow/Gemini]: "))
-        _set_nested(config_data, "dubbing.voice", _prompt("Default voice [xiaoxiao]: ", "xiaoxiao"))
+        _set_nested(config_data, "dubbing.preset", _prompt("Dubbing preset [siliconflow-cn-female]: ", "siliconflow-cn-female"))
+        _set_nested(config_data, "dubbing.api_key", _prompt("TTS API key [skip]: "))
+        _set_nested(config_data, "dubbing.voice", _prompt("Default voice [anna]: ", "anna"))
         _set_nested(config_data, "dubbing.timing", _prompt("Timing [balanced] (balanced/strict/natural/none): ", "balanced"))
         _set_nested(config_data, "dubbing.audio_mode", _prompt("Audio mode [replace] (replace/mix/duck): ", "replace"))
     except (EOFError, KeyboardInterrupt):
@@ -162,9 +162,10 @@ def _yes_no(prompt: str, default: bool) -> bool:
 
 def _build_onboarding_config(args: Namespace) -> dict:
     config_data = deepcopy(DEFAULTS)
+    profile = getattr(args, "profile", "basic")
     _set_nested(config_data, "translate.service", "bing")
-    _set_nested(config_data, "dubbing.preset", "edge-cn-female")
-    _set_nested(config_data, "dubbing.voice", "xiaoxiao")
+    _set_nested(config_data, "dubbing.preset", "siliconflow-cn-female" if profile == "dubbing" else "")
+    _set_nested(config_data, "dubbing.voice", "anna")
     _set_nested(config_data, "dubbing.timing", "balanced")
     _set_nested(config_data, "dubbing.audio_mode", "replace")
 
@@ -205,8 +206,7 @@ def _render_onboarding_template(config_data: dict) -> str:
     f.write("# [transcribe] controls speech-to-text. bijian/jianying need no key; whisper-cpp needs a local binary/model.\n")
     f.write("# [subtitle] split and AI polish use LLM; [translate] can use bing/google/llm.\n")
     f.write("# [synthesize] controls subtitle embedding/burning.\n")
-    f.write("# [dubbing] preset selects provider/model/voice defaults; edge-* presets need no API key but require network access.\n")
-    f.write("# timing controls speech fitting; audio_mode controls original audio.\n\n")
+    f.write("# [dubbing] preset selects provider/model/voice defaults; timing controls speech fitting; audio_mode controls original audio.\n\n")
     _write_toml(f, template_data)
     f.write("\n# Optional multi-speaker example:\n")
     f.write("# [dubbing.speakers.Alice]\n# voice = \"anna\"\n# [dubbing.speakers.Bob]\n# voice = \"benjamin\"\n# clone_audio = \"bob-reference.wav\"\n# clone_text = \"Exact words spoken in the reference audio.\"\n\n")

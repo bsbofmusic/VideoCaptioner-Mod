@@ -16,13 +16,6 @@ from videocaptioner.cli.config import (
 )
 
 
-def test_default_dubbing_uses_keyless_edge_tts():
-    assert DEFAULTS["dubbing"]["provider"] == "edge"
-    assert DEFAULTS["dubbing"]["preset"] == "edge-cn-female"
-    assert DEFAULTS["dubbing"]["api_key"] == ""
-    assert DEFAULTS["dubbing"]["voice"] == "zh-CN-XiaoxiaoNeural"
-
-
 class TestDeepMerge:
     def test_flat_override(self):
         assert _deep_merge({"a": 1}, {"a": 2}) == {"a": 2}

@@ -15,7 +15,6 @@ from videocaptioner.core.entities import (
     TranscribeTask,
     TranscriptAndSubtitleTask,
 )
-from videocaptioner.core.utils.path_utils import safe_stem, sanitize_path_component
 from videocaptioner.ui.common.config import cfg
 
 
@@ -56,7 +55,7 @@ class TaskFactory:
     ) -> TranscribeTask:
         """创建转录任务"""
         # 获取文件名
-        file_name = safe_stem(file_path)
+        file_name = Path(file_path).stem
 
         # 构建输出路径
         if need_next_task:
@@ -115,7 +114,7 @@ class TaskFactory:
         task_id: Optional[str] = None,
     ) -> SubtitleTask:
         """创建字幕任务"""
-        output_name = sanitize_path_component(
+        output_name = (
             Path(file_path).stem.replace("【原始字幕】", "").replace("【下载字幕】", "")
         )
         # 只在需要翻译时添加翻译服务后缀
@@ -138,14 +137,6 @@ class TaskFactory:
             base_url = cfg.openai_api_base.value
             api_key = cfg.openai_api_key.value
             llm_model = cfg.openai_model.value
-        elif current_service == LLMServiceEnum.CODEX:
-            base_url = cfg.codex_api_base.value
-            api_key = cfg.codex_api_key.value
-            llm_model = cfg.codex_model.value
-        elif current_service == LLMServiceEnum.ANTHROPIC:
-            base_url = cfg.anthropic_api_base.value
-            api_key = cfg.anthropic_api_key.value
-            llm_model = cfg.anthropic_model.value
         elif current_service == LLMServiceEnum.SILICON_CLOUD:
             base_url = cfg.silicon_cloud_api_base.value
             api_key = cfg.silicon_cloud_api_key.value
@@ -180,7 +171,6 @@ class TaskFactory:
             base_url=base_url,
             api_key=api_key,
             llm_model=llm_model,
-            llm_service=current_service,
             deeplx_endpoint=cfg.deeplx_endpoint.value,
             # 翻译服务
             translator_service=cfg.translator_service.value,
@@ -190,10 +180,6 @@ class TaskFactory:
             need_optimize=cfg.need_optimize.value,
             thread_num=cfg.thread_num.value,
             batch_size=cfg.batch_size.value,
-            optimize_thread_num=cfg.optimize_thread_num.value,
-            optimize_batch_size=cfg.optimize_batch_size.value,
-            optimize_timeout_seconds=cfg.optimize_timeout_seconds.value,
-            optimize_retry_count=cfg.optimize_retry_count.value,
             # 字幕布局、样式
             subtitle_layout=cfg.subtitle_layout.value,  # Now returns SubtitleLayoutEnum
             subtitle_style=TaskFactory.get_ass_style(cfg.subtitle_style_name.value),
@@ -228,7 +214,7 @@ class TaskFactory:
     ) -> SynthesisTask:
         """创建视频合成任务"""
         output_path = str(
-            Path(video_path).parent / f"【卡卡】{safe_stem(video_path)}.mp4"
+            Path(video_path).parent / f"【卡卡】{Path(video_path).stem}.mp4"
         )
 
         # 只有启用样式时才传入样式配置
