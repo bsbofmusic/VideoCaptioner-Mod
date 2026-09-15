@@ -23,6 +23,7 @@ AI-powered video captioning: transcribe speech → optimize subtitles → transl
 - Install CLI core: `pip install videocaptioner`; GUI only when needed: `pip install 'videocaptioner[gui]'`
 - FFmpeg + FFprobe are required for media workflows. On the managed VPS they are provisioned beside the isolated VideoCaptioner environment.
 - **Free (no API key):** Bcut/`bijian` transcription is the primary path; Google translation is available without an LLM key.
+- **MiniMax ASR:** `--asr minimax` uses the official `asr-1.0` `/v1/speech_to_text` multipart API. MiniMax limits one audio file to 500 seconds / 50 MB, so VideoCaptioner uses 480-second sequential chunks for long audio and reuses the official SRT response directly.
 - **JianYing boundary:** the client-side local quota is kept fresh/full, but JianYing still depends on the upstream remote signing service and can return HTTP 429. Fall back to Bcut rather than treating remote throttling as a local quota failure.
 - **Bing boundary:** the legacy free Edge auth endpoint is retired/404; do not select Bing as the default free translator.
 - **Requires LLM API key:** subtitle optimization, subtitle re-segmentation, LLM translation. Set via `OPENAI_API_KEY` env var or `--api-key` flag
@@ -103,9 +104,14 @@ videocaptioner synthesize video.mp4 -s video_en.srt --subtitle-mode hard \
 videocaptioner process podcast.mp3 --asr bijian --translator google --target-language en -o ./output/
 ```
 
-### 8. Transcribe other languages (whisper-api)
+### 8. Transcribe broader languages (MiniMax / whisper-api)
 
 ```bash
+# MiniMax official ASR
+videocaptioner transcribe cantonese_video.mp4 --asr minimax \
+  --minimax-api-key $VIDEOCAPTIONER_MINIMAX_API_KEY --language yue -o cantonese.srt
+
+# Whisper-compatible API
 videocaptioner transcribe french_video.mp4 --asr whisper-api \
   --whisper-api-key $OPENAI_API_KEY --language fr -o french.srt
 ```
@@ -128,7 +134,7 @@ videocaptioner synthesize video.mp4 -s subtitle.srt --subtitle-mode hard \
 
 | Command | Purpose |
 |---------|---------|
-| `transcribe` | Speech → subtitles. Engines: `bijian` (primary free path), `jianying` (remote signer may throttle), `whisper-api`, `whisper-cpp` |
+| `transcribe` | Speech → subtitles. Engines: `bijian` (primary free path), `jianying` (remote signer may throttle), `minimax`, `whisper-api`, `whisper-cpp` |
 | `subtitle` | Optimize (LLM) and/or translate (LLM/Google; Bing kept only as a legacy compatibility entry) subtitle files |
 | `synthesize` | Burn subtitles into video with customizable styles |
 | `process` | Full pipeline: transcribe → optimize → translate → synthesize |
@@ -162,6 +168,9 @@ BCP 47 codes: `zh-Hans` `zh-Hant` `en` `ja` `ko` `fr` `de` `es` `ru` `pt` `it` `
 |----------|---------|
 | `OPENAI_API_KEY` | LLM API key |
 | `OPENAI_BASE_URL` | LLM API base URL |
+| `VIDEOCAPTIONER_MINIMAX_API_KEY` | MiniMax ASR API key |
+| `VIDEOCAPTIONER_MINIMAX_API_BASE` | MiniMax ASR API base URL |
+| `VIDEOCAPTIONER_MINIMAX_MODEL` | MiniMax ASR model, default `asr-1.0` |
 
 ## Exit codes
 
@@ -172,4 +181,5 @@ BCP 47 codes: `zh-Hans` `zh-Hant` `en` `ja` `ko` `fr` `de` `es` `ru` `pt` `it` `
 - Use `-q` for scripting (stdout = result path only)
 - Google translation needs no LLM API key; legacy Bing free auth currently returns 404 and should not be the default.
 - `bijian` is the preferred free ASR path. `jianying` uses the same fresh local quota policy but may be unavailable when its upstream signing service is throttled.
+- MiniMax ASR supports mixed-language auto detection when `--language auto` is used; long audio is split into 480-second sequential chunks so each request stays below the provider's 500-second file limit.
 - Run `videocaptioner style` to see all style presets

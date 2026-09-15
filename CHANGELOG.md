@@ -6,6 +6,10 @@
 - Fixes Windows ASS hard-subtitle synthesis when FFmpeg stderr contains bytes that the active Windows code page cannot decode; video-resolution detection now parses FFmpeg stderr as raw bytes.
 - Makes batch-processing failures actionable in the table by showing a compact real error reason while preserving the full exception text in the tooltip.
 - Adds regressions for public-ASR concurrency policy, Windows FFmpeg stderr decoding, and batch error presentation.
+- Adds MiniMax ASR as a first-class `minimax` provider for CLI and GUI, using the official `asr-1.0` `/v1/speech_to_text` multipart API, SRT output, language hints/auto detection, word timestamps, masked configuration, connection testing, and actionable HTTP errors.
+- Keeps MiniMax inside its official file limits by serializing long audio into 480-second chunks; Bcut/JianYing long-audio chunks remain serialized as well.
+- Fixes a Qt test-thread teardown race that could abort the GitHub release test job with `QThread: Destroyed while thread is still running` even after the behavioral assertion passed.
+- Validates the release candidate on Windows with a real 63-minute Chinese lecture video: MiniMax, Bcut, and JianYing all completed on the same real-audio sample, and all three completed a multi-chunk long-audio probe before release.
 
 ## 0.0.9
 

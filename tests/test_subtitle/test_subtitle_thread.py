@@ -95,6 +95,16 @@ def run_thread_with_timeout(thread, timeout_ms=60000):
     thread.start()
     loop.exec_()
 
+    # The custom terminal signals are emitted from inside run(), before Qt has
+    # necessarily transitioned the native QThread to stopped. Keep the Python
+    # wrapper alive until that transition completes or fail with explicit
+    # cleanup instead of letting Qt abort the whole test process.
+    if not thread.wait(2000):
+        thread.requestInterruption()
+        thread.terminate()
+        thread.wait(2000)
+        raise TimeoutError("QThread did not stop after emitting its terminal signal")
+
     return results
 
 
