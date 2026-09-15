@@ -86,10 +86,22 @@ def test_core_wheel_has_no_gui_modules_and_cli_starts(tmp_path: Path) -> None:
     assert probe.returncode == 0, probe.stderr
     assert json.loads(probe.stdout) == {module: False for module in GUI_MODULES}
 
-    for args in (["--version"], ["--help"], ["transcribe", "--help"], ["doctor", "--json"]):
+    for args in (["--version"], ["--help"], ["transcribe", "--help"]):
         result = _run([str(cli), *args], cwd=venv)
         assert result.returncode == 0, result.stdout + result.stderr
         assert "Traceback" not in result.stdout + result.stderr
+
+    doctor = _run([str(cli), "doctor", "--json"], cwd=venv)
+    combined = doctor.stdout + doctor.stderr
+    assert doctor.returncode in {0, 4}, combined
+    assert "Traceback" not in combined
+    report = json.loads(doctor.stdout)
+    errors = {check["name"] for check in report["checks"] if check["status"] == "error"}
+    assert errors <= {"ffmpeg", "ffprobe"}, report
+    if errors:
+        assert doctor.returncode == 4
+    subtitle_check = next(check for check in report["checks"] if check["name"] == "subtitle.processing")
+    assert "translator=google" in subtitle_check["message"]
 
     for command in ([str(cli)], [str(cli), "gui"], [str(gui_cli)]):
         result = _run(command, cwd=venv)
