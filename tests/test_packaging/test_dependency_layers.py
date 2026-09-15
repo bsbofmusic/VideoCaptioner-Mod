@@ -55,3 +55,8 @@ def test_packaged_gui_resources_are_explicitly_included() -> None:
         "resource/subtitle_style": "videocaptioner/resources/subtitle_style",
         "resource/translations": "videocaptioner/resources/translations",
     }
+
+
+def test_release_workflow_runs_qt_tests_offscreen() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release-python.yml").read_text()
+    assert "QT_QPA_PLATFORM: offscreen" in workflow
