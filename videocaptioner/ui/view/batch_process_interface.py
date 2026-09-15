@@ -44,6 +44,21 @@ from videocaptioner.ui.thread.batch_process_thread import (
     BatchTask,
 )
 
+_BATCH_ERROR_STATUS_MAX_LENGTH = 72
+
+
+def _format_batch_error_status(error: str) -> str:
+    """Keep the batch table actionable while preserving full details in the tooltip."""
+    message = " ".join(str(error).split())
+    if not message:
+        return str(BatchTaskStatus.FAILED)
+
+    prefix = f"{BatchTaskStatus.FAILED}: "
+    available = _BATCH_ERROR_STATUS_MAX_LENGTH - len(prefix)
+    if len(message) > available:
+        message = message[: max(1, available - 1)].rstrip() + "…"
+    return prefix + message
+
 
 class BatchProcessInterface(QWidget):
     def __init__(self, parent=None):
@@ -362,7 +377,7 @@ class BatchProcessInterface(QWidget):
         for row in range(self.task_table.rowCount()):
             if self.task_table.item(row, 0).toolTip() == file_path:
                 status_item = self.task_table.item(row, 2)
-                status_item.setText(str(BatchTaskStatus.FAILED))
+                status_item.setText(_format_batch_error_status(error))
                 status_item.setToolTip(error)
                 break
 

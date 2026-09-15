@@ -1,4 +1,4 @@
-"""Package metadata tests for the 0.0.9 lightweight core / optional GUI split."""
+"""Package metadata tests for the 0.0.10 lightweight core / optional GUI split."""
 
 import re
 from pathlib import Path

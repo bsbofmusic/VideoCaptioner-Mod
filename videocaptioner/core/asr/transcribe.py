@@ -80,7 +80,10 @@ def _create_jianying_asr(audio_path: str, config: TranscribeConfig) -> ChunkedAS
         "need_word_time_stamp": config.need_word_time_stamp,
     }
     return ChunkedASR(
-        asr_class=JianYingASR, audio_path=audio_path, asr_kwargs=asr_kwargs
+        asr_class=JianYingASR,
+        audio_path=audio_path,
+        asr_kwargs=asr_kwargs,
+        chunk_concurrency=1,
     )
 
 
@@ -90,7 +93,12 @@ def _create_bijian_asr(audio_path: str, config: TranscribeConfig) -> ChunkedASR:
         "use_cache": True,
         "need_word_time_stamp": config.need_word_time_stamp,
     }
-    return ChunkedASR(asr_class=BcutASR, audio_path=audio_path, asr_kwargs=asr_kwargs)
+    return ChunkedASR(
+        asr_class=BcutASR,
+        audio_path=audio_path,
+        asr_kwargs=asr_kwargs,
+        chunk_concurrency=1,
+    )
 
 
 def _create_whisper_cpp_asr(audio_path: str, config: TranscribeConfig) -> ChunkedASR:

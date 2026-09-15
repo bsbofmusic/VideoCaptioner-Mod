@@ -13,7 +13,7 @@ pip install videocaptioner          # 轻量 CLI core
 pip install 'videocaptioner[gui]'   # 需要 GUI 时再装桌面依赖
 ```
 
-v0.0.9 以 **Bcut/必剪** 作为免费 ASR 主路径。本 Mod 会把作者写在客户端里的本地 quota 记录保持为 fresh/full，但不会伪装或绕过真实远端 429。JianYing 仍依赖上游远程签名服务，服务端限流时会快速失败并提示改用 Bcut。Google 翻译可继续免费使用；旧 Bing Edge 免费认证端点已退役，不再宣称可用。
+v0.0.10 以 **Bcut/必剪** 作为免费 ASR 主路径。Bcut 与 JianYing 的长音频分块改为串行提交，避免客户端自己用 3 路并发放大公共服务限流；真实远端 412/429 仍会原样暴露，不会伪装成功。Windows 硬字幕合成已修复 FFmpeg 输出被本地代码页解码失败的问题，批处理列表也会直接显示简短真实错误原因。Google 翻译可继续免费使用；旧 Bing Edge 免费认证端点已退役，不再宣称可用。
 
 ## CLI 命令行
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.10
+
+- Serializes Bcut/必剪 and JianYing long-audio chunks instead of sending three public-ASR chunks concurrently, reducing self-inflicted 412/429 bursts while keeping real upstream throttling visible.
+- Fixes Windows ASS hard-subtitle synthesis when FFmpeg stderr contains bytes that the active Windows code page cannot decode; video-resolution detection now parses FFmpeg stderr as raw bytes.
+- Makes batch-processing failures actionable in the table by showing a compact real error reason while preserving the full exception text in the tooltip.
+- Adds regressions for public-ASR concurrency policy, Windows FFmpeg stderr decoding, and batch error presentation.
+
 ## 0.0.9
 
 - Rebuilt the Mod from the exact upstream `WEIFENG2333/VideoCaptioner` v1.4.2 tag (`d753521d57cf2311df96bfee96fe39c6306a8e09`) instead of carrying forward the old proofreading/provider fork surface.

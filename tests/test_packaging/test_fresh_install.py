@@ -1,4 +1,4 @@
-"""Fresh virtual-environment smoke tests for a built 0.0.9 candidate wheel."""
+"""Fresh virtual-environment smoke tests for a built 0.0.10 candidate wheel."""
 
 import json
 import os
