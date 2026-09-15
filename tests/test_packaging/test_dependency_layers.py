@@ -60,3 +60,8 @@ def test_packaged_gui_resources_are_explicitly_included() -> None:
 def test_release_workflow_runs_qt_tests_offscreen() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-python.yml").read_text()
     assert "QT_QPA_PLATFORM: offscreen" in workflow
+
+
+def test_release_workflow_has_explicit_github_repo_context() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release-python.yml").read_text()
+    assert "GH_REPO: ${{ github.repository }}" in workflow
