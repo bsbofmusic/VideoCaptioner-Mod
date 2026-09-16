@@ -3,6 +3,7 @@ from videocaptioner.core.asr.bcut import BcutASR
 from videocaptioner.core.asr.chunked_asr import ChunkedASR
 from videocaptioner.core.asr.faster_whisper import FasterWhisperASR
 from videocaptioner.core.asr.jianying import JianYingASR
+from videocaptioner.core.asr.mechanical_reflow import mechanical_reflow
 from videocaptioner.core.asr.minimax_api import MiniMaxASR
 from videocaptioner.core.asr.whisper_api import WhisperAPI
 from videocaptioner.core.asr.whisper_cpp import WhisperCppASR
@@ -36,11 +37,27 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
     # Run transcription
     asr_data = asr.run(callback=callback)
 
-    # Optimize subtitle timing if not using word timestamps
-    if not config.need_word_time_stamp:
+    if config.mechanical_split:
+        if asr_data.is_word_timestamp():
+            asr_data = mechanical_reflow(
+                asr_data,
+                max_cjk=config.max_word_count_cjk,
+                max_english=config.max_word_count_english,
+            )
+        else:
+            callback(
+                100,
+                "Mechanical split skipped: provider did not return real word timestamps",
+            )
+    elif not config.need_word_time_stamp:
         asr_data.optimize_timing()
 
     return asr_data
+
+
+def _needs_word_timestamps(config: TranscribeConfig) -> bool:
+    """Mechanical reflow requires provider-supplied word timestamps."""
+    return config.need_word_time_stamp or config.mechanical_split
 
 
 def _create_asr_instance(audio_path: str, config: TranscribeConfig) -> ChunkedASR:
@@ -81,7 +98,7 @@ def _create_jianying_asr(audio_path: str, config: TranscribeConfig) -> ChunkedAS
     """Create JianYing ASR instance with chunking support."""
     asr_kwargs = {
         "use_cache": True,
-        "need_word_time_stamp": config.need_word_time_stamp,
+        "need_word_time_stamp": _needs_word_timestamps(config),
     }
     return ChunkedASR(
         asr_class=JianYingASR,
@@ -95,7 +112,7 @@ def _create_bijian_asr(audio_path: str, config: TranscribeConfig) -> ChunkedASR:
     """Create Bijian ASR instance with chunking support."""
     asr_kwargs = {
         "use_cache": True,
-        "need_word_time_stamp": config.need_word_time_stamp,
+        "need_word_time_stamp": _needs_word_timestamps(config),
     }
     return ChunkedASR(
         asr_class=BcutASR,
@@ -109,7 +126,7 @@ def _create_whisper_cpp_asr(audio_path: str, config: TranscribeConfig) -> Chunke
     """Create WhisperCpp ASR instance with chunking support."""
     asr_kwargs = {
         "use_cache": True,
-        "need_word_time_stamp": config.need_word_time_stamp,
+        "need_word_time_stamp": _needs_word_timestamps(config),
         "language": config.transcribe_language,
         "whisper_model": config.whisper_model.value if config.whisper_model else None,
     }
@@ -126,7 +143,7 @@ def _create_whisper_api_asr(audio_path: str, config: TranscribeConfig) -> Chunke
     """Create Whisper API ASR instance with chunking support."""
     asr_kwargs = {
         "use_cache": True,
-        "need_word_time_stamp": config.need_word_time_stamp,
+        "need_word_time_stamp": _needs_word_timestamps(config),
         "language": config.transcribe_language,
         "whisper_model": config.whisper_api_model or "whisper-1",
         "api_key": config.whisper_api_key or "",
@@ -142,7 +159,7 @@ def _create_minimax_asr(audio_path: str, config: TranscribeConfig) -> ChunkedASR
     """Create MiniMax ASR with provider limits enforced at the chunk boundary."""
     asr_kwargs = {
         "use_cache": True,
-        "need_word_time_stamp": config.need_word_time_stamp,
+        "need_word_time_stamp": _needs_word_timestamps(config),
         "language": config.transcribe_language,
         "model": config.minimax_api_model or "asr-1.0",
         "api_key": config.minimax_api_key or "",
@@ -161,7 +178,7 @@ def _create_faster_whisper_asr(audio_path: str, config: TranscribeConfig) -> Chu
     """Create FasterWhisper ASR instance with chunking support."""
     asr_kwargs = {
         "use_cache": True,
-        "need_word_time_stamp": config.need_word_time_stamp,
+        "need_word_time_stamp": _needs_word_timestamps(config),
         "faster_whisper_program": config.faster_whisper_program or "",
         "language": config.transcribe_language,
         "whisper_model": (

@@ -111,7 +111,21 @@ def _build_transcribe_parser(subparsers) -> None:
     asr.add_argument("--language", metavar="CODE",
                      help="Source language as ISO 639-1 code, or 'auto' (default: auto)")
     asr.add_argument("--word-timestamps", action="store_true",
-                     help="Include word-level timestamps (for subtitle splitting)")
+                     help="Include word-level timestamps")
+    mechanical = asr.add_mutually_exclusive_group()
+    mechanical.add_argument(
+        "--mechanical-split",
+        dest="mechanical_split",
+        action="store_true",
+        default=None,
+        help="Reflow real word timestamps into readable captions without an LLM",
+    )
+    mechanical.add_argument(
+        "--no-mechanical-split",
+        dest="mechanical_split",
+        action="store_false",
+        help="Keep the ASR provider's original caption segmentation",
+    )
     asr.add_argument("--whisper-api-key", metavar="KEY",
                      help="Whisper API key (for --asr whisper-api)")
     asr.add_argument("--whisper-api-base", metavar="URL",
@@ -151,11 +165,11 @@ def _build_subtitle_parser(subparsers) -> None:
         help="Optimize and/or translate subtitles",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "Process subtitle files with up to 3 steps:\n"
-            "  1. Split — Re-segment subtitles by semantic boundaries (LLM)\n"
-            "  2. Optimize — Fix ASR errors, punctuation, formatting (LLM)\n"
-            "  3. Translate — Translate to another language (LLM, Bing, or Google)\n\n"
-            "By default, optimize and split are enabled, translation is disabled.\n"
+            "Process subtitle files with up to 2 normal steps:\n"
+            "  1. Optimize — Fix ASR errors, punctuation, formatting (LLM)\n"
+            "  2. Translate — Translate to another language (LLM, Bing, or Google)\n\n"
+            "ASR caption reflow is handled deterministically during transcription.\n"
+            "By default, optimization is enabled and translation is disabled.\n"
             "Use --translator or --target-language to enable translation.\n"
             "Bing and Google translators are free, LLM requires an API key."
         ),
@@ -175,7 +189,7 @@ def _build_subtitle_parser(subparsers) -> None:
     proc = p.add_argument_group("Processing options")
     proc.add_argument("--no-optimize", action="store_true", help="Skip LLM subtitle optimization")
     proc.add_argument("--no-translate", action="store_true", help="Skip translation")
-    proc.add_argument("--no-split", action="store_true", help="Skip subtitle re-segmentation")
+    proc.add_argument("--no-split", action="store_true", help=argparse.SUPPRESS)
 
     trans = p.add_argument_group("Translation options")
     trans.add_argument(
@@ -345,7 +359,7 @@ def _build_process_parser(subparsers) -> None:
     pipe = p.add_argument_group("Pipeline options")
     pipe.add_argument("--no-optimize", action="store_true", help="Skip AI subtitle polish")
     pipe.add_argument("--no-translate", action="store_true", help="Skip translation")
-    pipe.add_argument("--no-split", action="store_true", help="Skip subtitle re-segmentation")
+    pipe.add_argument("--no-split", action="store_true", help=argparse.SUPPRESS)
     pipe.add_argument("--no-synthesize", action="store_true", help="Skip video synthesis (output subtitles only)")
     pipe.add_argument("--dub", action="store_true", help="Generate dubbed audio/video after subtitle processing")
     pipe.add_argument("--dub-only", action="store_true", help="Output only the dubbed result, skipping subtitle burn/embedding")
@@ -354,6 +368,20 @@ def _build_process_parser(subparsers) -> None:
                       help="ASR engine (default: bijian)")
     pipe.add_argument("--language", metavar="CODE",
                       help="Source language as ISO 639-1 code, or 'auto' (default: auto)")
+    mechanical = pipe.add_mutually_exclusive_group()
+    mechanical.add_argument(
+        "--mechanical-split",
+        dest="mechanical_split",
+        action="store_true",
+        default=None,
+        help="Reflow real word timestamps into readable captions without an LLM",
+    )
+    mechanical.add_argument(
+        "--no-mechanical-split",
+        dest="mechanical_split",
+        action="store_false",
+        help="Keep the ASR provider's original caption segmentation",
+    )
     pipe.add_argument("--whisper-api-key", metavar="KEY", help="Whisper API key (for --asr whisper-api)")
     pipe.add_argument("--minimax-api-key", metavar="KEY", help="MiniMax ASR API key (for --asr minimax)")
     pipe.add_argument("--minimax-api-base", metavar="URL", help="MiniMax ASR API base URL")

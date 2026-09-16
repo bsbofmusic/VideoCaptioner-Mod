@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.11
+
+- Adds a deterministic mechanical subtitle-reflow path that groups real word/character timestamps by pauses, punctuation, and bounded display length without calling an LLM or fabricating timing.
+- Enables mechanical reflow by default for MiniMax ASR with conservative defaults of 18 CJK characters / 12 space-separated words and a 500 ms pause boundary; Bcut/JianYing keep their provider segmentation by default and expose an explicit opt-in switch.
+- Changes `ChunkedASR`'s global default concurrency from 3 to 1 so newly added providers are stable-by-default unless they explicitly opt into parallel chunk requests.
+- Removes LLM subtitle splitting from the normal GUI/CLI pipeline defaults while retaining compatibility configuration/code for existing callers; subtitle optimization and translation remain independent LLM features.
+- Adds CLI `--mechanical-split` / `--no-mechanical-split`, GUI switches, provider-policy tests, and deterministic reflow regressions covering text preservation, punctuation boundaries, pauses, English spacing, and fail-safe rejection of sentence-only timestamps.
+- Validates the 18/500 defaults on a real 120-second excerpt from the Windows course library: MiniMax returned 566 real word timestamps; reflow preserved the full text, produced zero punctuation-leading cues, and held P95/max CJK cue length at 18 characters.
+
 ## 0.0.10
 
 - Serializes Bcut/必剪 and JianYing long-audio chunks instead of sending three public-ASR chunks concurrently, reducing self-inflicted 412/429 bursts while keeping real upstream throttling visible.

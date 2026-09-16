@@ -22,7 +22,7 @@ logger = setup_logger("chunked_asr")
 MS_PER_SECOND = 1000
 DEFAULT_CHUNK_LENGTH_SEC = 60 * 10  # 10 minutes
 DEFAULT_CHUNK_OVERLAP_SEC = 10  # 10秒重叠
-DEFAULT_CHUNK_CONCURRENCY = 3  # 3个并发
+DEFAULT_CHUNK_CONCURRENCY = 1  # conservative by default; providers may opt in explicitly
 
 
 class ChunkedASR:
@@ -52,7 +52,7 @@ class ChunkedASR:
         asr_kwargs: 传递给 ASR 构造函数的参数字典
         chunk_length: 每块长度（秒），默认 480 秒（8分钟）
         chunk_overlap: 块之间重叠时长（秒），默认 10 秒
-        chunk_concurrency: 并发转录数量，默认 3
+        chunk_concurrency: 并发转录数量，默认 1（稳定优先）
     """
 
     def __init__(

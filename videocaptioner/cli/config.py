@@ -96,11 +96,17 @@ DEFAULTS: Dict[str, Any] = {
         "whisper_cpp": {
             "model": "large-v2",
         },
+        "mechanical_split": {
+            "minimax": True,
+            "public": False,
+            "max_cjk": 18,
+            "max_english": 12,
+        },
     },
     "subtitle": {
         "optimize": True,
         "translate": False,
-        "split": True,
+        "split": False,
         "max_word_count_cjk": 18,
         "max_word_count_english": 12,
         "thread_num": 4,

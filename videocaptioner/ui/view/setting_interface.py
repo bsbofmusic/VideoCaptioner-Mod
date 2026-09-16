@@ -440,6 +440,14 @@ class SettingInterface(ScrollArea):
         )
         self.transcribeModelCard.comboBox.setMinimumWidth(150)
 
+        self.publicMechanicalSplitCard = SwitchSettingCard(
+            FIF.ALIGNMENT,
+            self.tr("机械断句"),
+            self.tr("必剪/剪映默认关闭；仅在原始字幕断句不好时开启，不调用大模型"),
+            cfg.public_asr_mechanical_split,
+            self.transcribeGroup,
+        )
+
         # API Base URL
         self.whisperApiBaseCard = LineEditSettingCard(
             cfg.whisper_api_base,
@@ -497,12 +505,20 @@ class SettingInterface(ScrollArea):
             self.tr("MiniMax ASR 模型"),
             self.tr("当前官方 Speech-to-Text 模型"), ["asr-1.0"], self.transcribeGroup,
         )
+        self.minimaxMechanicalSplitCard = SwitchSettingCard(
+            FIF.ALIGNMENT,
+            self.tr("机械断句"),
+            self.tr("默认开启；按真实字词时间戳、停顿、标点和长度整理字幕，不调用大模型"),
+            cfg.minimax_mechanical_split,
+            self.transcribeGroup,
+        )
         self.checkMiniMaxConnectionCard = PushSettingCard(
             self.tr("测试 MiniMax 连接"), FIF.CONNECT, self.tr("测试 MiniMax ASR 连接"),
             self.tr("发送极短静音 WAV 验证鉴权与服务可用性"), self.transcribeGroup,
         )
 
         # 默认隐藏 Whisper API 配置卡片（仅在选择 Whisper API 时显示）
+        self.publicMechanicalSplitCard.setVisible(False)
         self.whisperApiBaseCard.setVisible(False)
         self.whisperApiKeyCard.setVisible(False)
         self.whisperApiModelCard.setVisible(False)
@@ -510,6 +526,7 @@ class SettingInterface(ScrollArea):
         self.minimaxApiBaseCard.setVisible(False)
         self.minimaxApiKeyCard.setVisible(False)
         self.minimaxApiModelCard.setVisible(False)
+        self.minimaxMechanicalSplitCard.setVisible(False)
         self.checkMiniMaxConnectionCard.setVisible(False)
 
     def __createTranslateServiceCards(self):
@@ -622,6 +639,7 @@ class SettingInterface(ScrollArea):
 
         # 添加转录配置卡片
         self.transcribeGroup.addSettingCard(self.transcribeModelCard)
+        self.transcribeGroup.addSettingCard(self.publicMechanicalSplitCard)
         # 添加 Whisper API 配置卡片
         self.transcribeGroup.addSettingCard(self.whisperApiBaseCard)
         self.transcribeGroup.addSettingCard(self.whisperApiKeyCard)
@@ -631,6 +649,7 @@ class SettingInterface(ScrollArea):
         self.transcribeGroup.addSettingCard(self.minimaxApiBaseCard)
         self.transcribeGroup.addSettingCard(self.minimaxApiKeyCard)
         self.transcribeGroup.addSettingCard(self.minimaxApiModelCard)
+        self.transcribeGroup.addSettingCard(self.minimaxMechanicalSplitCard)
         self.transcribeGroup.addSettingCard(self.checkMiniMaxConnectionCard)
 
         # 添加LLM配置卡片
@@ -928,12 +947,18 @@ class SettingInterface(ScrollArea):
             self.minimaxApiBaseCard,
             self.minimaxApiKeyCard,
             self.minimaxApiModelCard,
+            self.minimaxMechanicalSplitCard,
             self.checkMiniMaxConnectionCard,
         ]
 
         # 根据选择的模型显示/隐藏对应 API 配置
         is_whisper_api = model_name == TranscribeModelEnum.WHISPER_API.value
         is_minimax_api = model_name == TranscribeModelEnum.MINIMAX_API.value
+        is_public_asr = model_name in (
+            TranscribeModelEnum.BIJIAN.value,
+            TranscribeModelEnum.JIANYING.value,
+        )
+        self.publicMechanicalSplitCard.setVisible(is_public_asr)
         for card in whisper_api_cards:
             card.setVisible(is_whisper_api)
         for card in minimax_api_cards:

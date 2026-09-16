@@ -136,7 +136,7 @@ class TestChunkedASRBasics:
             assert chunked.audio_path == audio_input
             assert chunked.chunk_length_ms == 600 * 1000  # 10 分钟
             assert chunked.chunk_overlap_ms == 10 * 1000  # 10 秒
-            assert chunked.chunk_concurrency == 3
+            assert chunked.chunk_concurrency == 1
         finally:
             Path(audio_input).unlink()
 

@@ -10,6 +10,17 @@ from videocaptioner.cli.config import get
 from videocaptioner.cli.validators import validate_transcribe
 
 
+def _resolve_mechanical_split(asr_engine: str, override: bool | None, config: dict) -> bool:
+    """Resolve provider-safe deterministic reflow policy."""
+    if override is not None:
+        return override
+    if asr_engine == "minimax":
+        return bool(get(config, "transcribe.mechanical_split.minimax", True))
+    if asr_engine in {"bijian", "jianying"}:
+        return bool(get(config, "transcribe.mechanical_split.public", False))
+    return False
+
+
 def run(args: Namespace, config: dict) -> int:
     from videocaptioner.cli.validators import validate_media_input
 
@@ -101,6 +112,11 @@ def run(args: Namespace, config: dict) -> int:
         transcribe_model=asr_map.get(asr_engine),
         transcribe_language=language if language != "auto" else "",
         need_word_time_stamp=getattr(args, "word_timestamps", False),
+        mechanical_split=_resolve_mechanical_split(
+            asr_engine, getattr(args, "mechanical_split", None), config
+        ),
+        max_word_count_cjk=get(config, "transcribe.mechanical_split.max_cjk", 18),
+        max_word_count_english=get(config, "transcribe.mechanical_split.max_english", 12),
         # FasterWhisper options
         faster_whisper_model=fw_model_enum,
         faster_whisper_model_dir=None,

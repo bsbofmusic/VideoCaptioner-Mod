@@ -162,6 +162,15 @@ class Config(QConfig):
         OptionsValidator(TranscribeLanguageEnum),
         EnumSerializer(TranscribeLanguageEnum),
     )
+    public_asr_mechanical_split = ConfigItem(
+        "Transcribe", "PublicMechanicalSplit", False, BoolValidator()
+    )
+    mechanical_max_word_count_cjk = ConfigItem(
+        "Transcribe", "MechanicalMaxWordCountCJK", 18, RangeValidator(8, 100)
+    )
+    mechanical_max_word_count_english = ConfigItem(
+        "Transcribe", "MechanicalMaxWordCountEnglish", 12, RangeValidator(8, 100)
+    )
 
     # ------------------- Whisper Cpp 配置 -------------------
     whisper_model = OptionsConfigItem(
@@ -224,6 +233,9 @@ class Config(QConfig):
     minimax_api_base = ConfigItem("MiniMaxAPI", "MiniMaxApiBase", "https://api.minimaxi.com/v1")
     minimax_api_key = ConfigItem("MiniMaxAPI", "MiniMaxApiKey", "")
     minimax_api_model = OptionsConfigItem("MiniMaxAPI", "MiniMaxApiModel", "asr-1.0")
+    minimax_mechanical_split = ConfigItem(
+        "MiniMaxAPI", "MechanicalSplit", True, BoolValidator()
+    )
 
     # ------------------- 字幕配置 -------------------
     need_optimize = ConfigItem("Subtitle", "NeedOptimize", False, BoolValidator())

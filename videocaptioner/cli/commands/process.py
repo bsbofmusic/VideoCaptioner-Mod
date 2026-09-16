@@ -15,7 +15,7 @@ def run(args: Namespace, config: dict) -> int:
 
     no_optimize = not get(config, "subtitle.optimize", True)
     no_translate = not get(config, "subtitle.translate", False)
-    no_split = not get(config, "subtitle.split", True)
+    no_split = not get(config, "subtitle.split", False)
     no_synthesize = getattr(args, "no_synthesize", False)
     do_dub = getattr(args, "dub", False) or getattr(args, "dub_only", False)
     if getattr(args, "dub_only", False):
@@ -76,11 +76,12 @@ def run(args: Namespace, config: dict) -> int:
         output.info(f"Step {current_step}/{total_steps}: Transcribing...")
     subtitle_path = str(out_dir / f"{path.stem}.srt")
 
-    # Word timestamps are useful for semantic splitting/optimization, but bad for
-    # direct dubbing because they create word-level TTS fragments.
-    need_word_ts = not (no_optimize and no_split)
+    # Mechanical reflow requests real word timestamps inside the ASR factory.
+    # Keep the ordinary path sentence-level so dubbing/optimization never sees
+    # word-fragment SRT unless the user explicitly asks for it.
     tr_args = Namespace(
-        input=str(path), output=subtitle_path, format="srt", word_timestamps=need_word_ts,
+        input=str(path), output=subtitle_path, format="srt", word_timestamps=False,
+        mechanical_split=getattr(args, "mechanical_split", None),
         verbose=verbose, quiet=quiet, config=getattr(args, "config", None),
         asr=getattr(args, "asr", None), language=getattr(args, "language", None),
         fw_model=None, fw_device=None, fw_vad_method=None, fw_vad_threshold=None,

@@ -51,7 +51,7 @@ videocaptioner config set minimax_api.api_key <your-key>
 videocaptioner transcribe input.mp4 --asr minimax --language zh -o output.srt
 ```
 
-MiniMax 当前使用官方 `asr-1.0` / `v1/speech_to_text`；单次音频受官方 500 秒限制，VideoCaptioner 会自动按 480 秒串行分块处理长音频。
+MiniMax 当前使用官方 `asr-1.0` / `v1/speech_to_text`；单次音频受官方 500 秒限制，VideoCaptioner 会自动按 480 秒串行分块处理长音频。MiniMax 默认同时启用**机械断句**：只使用 ASR 返回的真实字/词时间戳，按停顿、标点和长度整理字幕，不调用大模型、不猜时间轴；默认上限为中文 18 字 / 英文等空格分词语言 12 词。必剪/剪映默认保留服务端原始分段，只有手动开启机械断句时才走这条路径。
 
 <details>
 <summary>所有 CLI 命令一览</summary>

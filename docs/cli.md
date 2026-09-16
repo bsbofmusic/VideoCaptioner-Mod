@@ -51,7 +51,9 @@ videocaptioner transcribe <文件> [选项]
 |------|------|
 | `--asr` | ASR 引擎：`bijian`(默认,免费) `jianying`(免费) `whisper-api` `minimax` `whisper-cpp`。bijian/jianying 仅支持中英文；MiniMax/Whisper 可覆盖更多语言 |
 | `--language CODE` | 源语言代码，如 `zh` `yue` `en` `ja`，或 `auto`（默认） |
-| `--word-timestamps` | 输出词级时间戳（配合字幕断句使用） |
+| `--word-timestamps` | 直接输出词级时间戳 |
+| `--mechanical-split` | 用真实字/词时间戳做机械断句（停顿 + 标点 + 长度；不调用 LLM） |
+| `--no-mechanical-split` | 保留 ASR 服务端原始分段。MiniMax 默认机械断句开启；必剪/剪映默认关闭 |
 | `--whisper-api-key` | Whisper API 密钥（仅 `--asr whisper-api`） |
 | `--whisper-api-base` | Whisper API 地址 |
 | `--minimax-api-key` | MiniMax API 密钥（仅 `--asr minimax`） |
@@ -65,13 +67,12 @@ videocaptioner transcribe <文件> [选项]
 
 ### `subtitle` — 字幕优化与翻译
 
-处理字幕文件，支持三个步骤：
+普通流程保留两个步骤：
 
-1. **断句** — 按语义重新分割字幕（LLM）
-2. **优化** — 修正 ASR 错误、标点、格式（LLM）
-3. **翻译** — 翻译到其他语言（LLM / 必应 / 谷歌）
+1. **优化** — 修正 ASR 错误、标点、格式（LLM）
+2. **翻译** — 翻译到其他语言（LLM / 必应 / 谷歌）
 
-默认开启优化和断句，翻译默认关闭。指定 `--translator` 或 `--target-language` 自动开启翻译。
+字幕断句现在优先在转录阶段由机械断句完成；旧 LLM 断句配置仍保留兼容入口，但不再是 CLI / GUI 的默认路径。默认开启优化，翻译默认关闭。指定 `--translator` 或 `--target-language` 自动开启翻译。
 
 ```bash
 videocaptioner subtitle <字幕文件> [选项]
@@ -83,7 +84,6 @@ videocaptioner subtitle <字幕文件> [选项]
 | `--target-language CODE` | 目标语言 BCP 47 代码：`zh-Hans` `en` `ja` `ko` `fr` `de` 等 |
 | `--no-optimize` | 跳过优化 |
 | `--no-translate` | 跳过翻译 |
-| `--no-split` | 跳过断句 |
 | `--reflect` | 反思式翻译（仅 LLM，质量更高但更慢） |
 | `--layout` | 双语布局：`target-above` `source-above` `target-only` `source-only` |
 | `--prompt TEXT` | 自定义提示词（辅助 LLM 优化/翻译） |

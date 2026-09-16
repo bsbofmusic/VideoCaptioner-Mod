@@ -23,7 +23,7 @@ AI-powered video captioning: transcribe speech → optimize subtitles → transl
 - Install CLI core: `pip install videocaptioner`; GUI only when needed: `pip install 'videocaptioner[gui]'`
 - FFmpeg + FFprobe are required for media workflows. On the managed VPS they are provisioned beside the isolated VideoCaptioner environment.
 - **Free (no API key):** Bcut/`bijian` transcription is the primary path; Google translation is available without an LLM key.
-- **MiniMax ASR:** `--asr minimax` uses the official `asr-1.0` `/v1/speech_to_text` multipart API. MiniMax limits one audio file to 500 seconds / 50 MB, so VideoCaptioner uses 480-second sequential chunks for long audio and reuses the official SRT response directly.
+- **MiniMax ASR:** `--asr minimax` uses the official `asr-1.0` `/v1/speech_to_text` multipart API. MiniMax limits one audio file to 500 seconds / 50 MB, so VideoCaptioner uses 480-second sequential chunks for long audio. MiniMax defaults to deterministic mechanical reflow from real word timestamps (18 CJK characters / 12 space-separated words, 500 ms pause boundary); it does not call an LLM or invent timing. Bcut/JianYing keep provider segmentation unless the user explicitly enables mechanical reflow.
 - **JianYing boundary:** the client-side local quota is kept fresh/full, but JianYing still depends on the upstream remote signing service and can return HTTP 429. Fall back to Bcut rather than treating remote throttling as a local quota failure.
 - **Bing boundary:** the legacy free Edge auth endpoint is retired/404; do not select Bing as the default free translator.
 - **Requires LLM API key:** subtitle optimization, subtitle re-segmentation, LLM translation. Set via `OPENAI_API_KEY` env var or `--api-key` flag

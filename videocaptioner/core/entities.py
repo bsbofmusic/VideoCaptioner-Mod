@@ -555,6 +555,9 @@ class TranscribeConfig:
     transcribe_model: Optional[TranscribeModelEnum] = None
     transcribe_language: str = ""
     need_word_time_stamp: bool = True
+    mechanical_split: bool = False
+    max_word_count_cjk: int = 18
+    max_word_count_english: int = 12
     output_format: Optional[TranscribeOutputFormatEnum] = None
     # Whisper Cpp 配置
     whisper_model: Optional[WhisperModelEnum] = None
@@ -593,6 +596,7 @@ class TranscribeConfig:
         )
         lines.append(f"Language: {self.transcribe_language or 'Auto'}")
         lines.append(f"Word Timestamp: {self.need_word_time_stamp}")
+        lines.append(f"Mechanical Split: {self.mechanical_split}")
         lines.append(
             f"Output Format: {self.output_format.value if self.output_format else 'None'}"
         )

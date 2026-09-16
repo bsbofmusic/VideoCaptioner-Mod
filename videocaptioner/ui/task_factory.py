@@ -12,10 +12,21 @@ from videocaptioner.core.entities import (
     SynthesisConfig,
     SynthesisTask,
     TranscribeConfig,
+    TranscribeModelEnum,
     TranscribeTask,
     TranscriptAndSubtitleTask,
 )
 from videocaptioner.ui.common.config import cfg
+
+
+def resolve_mechanical_split(
+    model: TranscribeModelEnum, *, minimax_enabled: bool, public_enabled: bool
+) -> bool:
+    if model == TranscribeModelEnum.MINIMAX_API:
+        return minimax_enabled
+    if model in (TranscribeModelEnum.BIJIAN, TranscribeModelEnum.JIANYING):
+        return public_enabled
+    return False
 
 
 class TaskFactory:
@@ -58,8 +69,14 @@ class TaskFactory:
         file_name = Path(file_path).stem
 
         # 构建输出路径
+        model = cfg.transcribe_model.value
+        mechanical_split = resolve_mechanical_split(
+            model,
+            minimax_enabled=cfg.minimax_mechanical_split.value,
+            public_enabled=cfg.public_asr_mechanical_split.value,
+        )
+
         if need_next_task:
-            need_word_time_stamp = cfg.need_split.value
             output_path = str(
                 Path(cfg.work_dir.value)
                 / file_name
@@ -67,13 +84,15 @@ class TaskFactory:
                 / f"【原始字幕】{file_name}-{cfg.transcribe_model.value.value}-{cfg.transcribe_language.value.value}.srt"
             )
         else:
-            need_word_time_stamp = False
             output_path = str(Path(file_path).parent / f"{file_name}.srt")
 
         config = TranscribeConfig(
             transcribe_model=cfg.transcribe_model.value,
             transcribe_language=LANGUAGES[cfg.transcribe_language.value.value],
-            need_word_time_stamp=need_word_time_stamp,
+            need_word_time_stamp=False,
+            mechanical_split=mechanical_split,
+            max_word_count_cjk=cfg.mechanical_max_word_count_cjk.value,
+            max_word_count_english=cfg.mechanical_max_word_count_english.value,
             output_format=cfg.transcribe_output_format.value,
             # Whisper Cpp 配置
             whisper_model=cfg.whisper_model.value,
@@ -190,7 +209,8 @@ class TaskFactory:
             # 字幕分割
             max_word_count_cjk=cfg.max_word_count_cjk.value,
             max_word_count_english=cfg.max_word_count_english.value,
-            need_split=cfg.need_split.value,
+            # The Mod uses deterministic ASR reflow instead of LLM splitting.
+            need_split=False,
             # 字幕翻译
             target_language=cfg.target_language.value,
             # 字幕提示

@@ -7,6 +7,7 @@ from qfluentwidgets import (
     PushSettingCard,
     SettingCardGroup,
     SingleDirectionScrollArea,
+    SwitchSettingCard,
 )
 from qfluentwidgets import FluentIcon as FIF
 
@@ -102,6 +103,13 @@ class MiniMaxAPISettingWidget(QWidget):
             [lang.value for lang in _MINIMAX_LANGUAGE_LABELS],
             self.setting_group,
         )
+        self.mechanical_split_card = SwitchSettingCard(
+            FIF.ALIGNMENT,
+            self.tr("机械断句"),
+            self.tr("按真实字词时间戳、停顿、标点和长度整理字幕；不调用大模型"),
+            cfg.minimax_mechanical_split,
+            self.setting_group,
+        )
         self.check_connection_card = PushSettingCard(
             self.tr("测试连接"),
             FIF.CONNECT,
@@ -115,6 +123,7 @@ class MiniMaxAPISettingWidget(QWidget):
             self.api_key_card,
             self.model_card,
             self.language_card,
+            self.mechanical_split_card,
             self.check_connection_card,
         ):
             self.setting_group.addSettingCard(card)
