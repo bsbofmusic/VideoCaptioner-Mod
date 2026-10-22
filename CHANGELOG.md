@@ -2,7 +2,7 @@
 
 ## 0.0.12
 
-- Fixes console windows flashing on Windows when the GUI runs without a console (`pythonw.exe`): importing the package now defaults child processes spawned by third-party code — pydub chunk export, ffmpeg/ffprobe probing, yt-dlp helpers — to `CREATE_NO_WINDOW`, while call sites that pass explicit console flags or positional `creationflags` keep their intended behaviour.
+- Fixes console windows flashing on Windows when the GUI runs without a console (`pythonw.exe`): importing the package now defaults children spawned through `subprocess.Popen` — including third-party pydub chunk export and media probing that cannot be fixed at the call site — to `CREATE_NO_WINDOW`, while call sites that pass explicit console flags or positional `creationflags` keep their intended behaviour. Spawn paths that bypass `subprocess.Popen` (`_winapi.CreateProcess`, `os.system`, `QProcess`) are not covered; none are used by the current GUI/CLI pipelines.
 - No functional or dependency changes; CLI behaviour with an attached terminal is unchanged because the patch only applies when the current process has no console.
 
 ## 0.0.11
