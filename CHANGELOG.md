@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.12
+
+- Fixes console windows flashing on Windows when the GUI runs without a console (`pythonw.exe`): importing the package now defaults child processes spawned by third-party code — pydub chunk export, ffmpeg/ffprobe probing, yt-dlp helpers — to `CREATE_NO_WINDOW`, while call sites that pass explicit console flags or positional `creationflags` keep their intended behaviour.
+- No functional or dependency changes; CLI behaviour with an attached terminal is unchanged because the patch only applies when the current process has no console.
+
 ## 0.0.11
 
 - Adds a deterministic mechanical subtitle-reflow path that groups real word/character timestamps by pauses, punctuation, and bounded display length without calling an LLM or fabricating timing.
